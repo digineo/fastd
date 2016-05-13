@@ -2,18 +2,16 @@
 #include <sys/module.h>
 #include <sys/kernel.h>
 #include <sys/systm.h>
-
 #include <sys/conf.h>
 #include <sys/uio.h>
 #include <sys/malloc.h>
 #include <sys/ioccom.h>
+#include <sys/socketvar.h>
+#include <netinet/in.h>
+#include "fastd.h"
+#include "socket.h"
 
 #define BUFFER_SIZE     256
-
-#define FASTD_CLEAR_BUFFER       _IO('F', 1)
-
-MALLOC_DECLARE(M_FASTD);
-MALLOC_DEFINE(M_FASTD, "fastd_buffer", "buffer for fastd driver");
 
 /* Forward declarations. */
 static d_read_t		fastd_read;
@@ -29,8 +27,8 @@ static struct cdevsw fastd_cdevsw = {
 };
 
 typedef struct fastd {
-				char buffer[BUFFER_SIZE];
-				int length;
+	char buffer[BUFFER_SIZE];
+	int length;
 } fastd_t;
 
 static fastd_t *fastd_message;
@@ -80,11 +78,14 @@ fastd_modevent(module_t mod __unused, int event, void *arg __unused)
 	switch (event) {
 	case MOD_LOAD:
 		fastd_message = malloc(sizeof(fastd_t), M_FASTD, M_WAITOK);
-		fastd_dev = make_dev(&fastd_cdevsw, 0, UID_ROOT, GID_WHEEL,
-			0600, "fastd");
+		fastd_dev = make_dev(&fastd_cdevsw, 0, UID_ROOT, GID_WHEEL, 0600, "fastd");
+
+		fastd_create_socket();
+
 		uprintf("fastd driver loaded.\n");
 		break;
 	case MOD_UNLOAD:
+		fastd_destroy_socket();
 		destroy_dev(fastd_dev);
 		free(fastd_message, M_FASTD);
 		uprintf("fastd driver unloaded.\n");
@@ -101,14 +102,13 @@ static int
 fastd_ioctl(struct cdev *dev, u_long cmd, caddr_t data, int fflag, struct thread *td)
 {
 	int error = 0;
-	uprintf("command %lu\n", cmd);
 
 	switch (cmd) {
-	case FASTD_CLEAR_BUFFER:
-		memset(fastd_message->buffer, '\0',
-		fastd_message->length);
-		fastd_message->length = 0;
-		uprintf("Buffer cleared.\n");
+	case FASTD_BIND:
+		error = fastd_bind_socket((union fastd_sockaddr*)data);
+		break;
+	case FASTD_CLOSE:
+		fastd_destroy_socket();
 		break;
 	default:
 		error = ENOTTY;

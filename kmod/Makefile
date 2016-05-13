@@ -1,4 +1,4 @@
 KMOD=	fastd
-SRCS=	fastd.c
+SRCS=	fastd.c socket.c
 
 .include <bsd.kmod.mk>
