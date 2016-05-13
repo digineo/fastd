@@ -9,6 +9,7 @@ import (
 	"net"
 	"os"
 	"syscall"
+	"time"
 	"unsafe"
 )
 
@@ -29,6 +30,11 @@ func main() {
 	// create new socket
 	if err := bind(); err != nil {
 		panic(err)
+	}
+
+	for {
+		udpTest()
+		time.Sleep(time.Second * 1)
 	}
 }
 
