@@ -5,8 +5,7 @@ import (
 	"net"
 )
 
-func udpTest() {
-	msg := "hello world"
+func udpTest(msg string) {
 	addr := &net.UDPAddr{
 		IP:   listenAddr,
 		Port: int(listenPort),

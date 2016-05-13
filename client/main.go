@@ -33,7 +33,9 @@ func main() {
 	}
 
 	for {
-		udpTest()
+		udpTest("\x01hello")
+		time.Sleep(time.Second * 1)
+		udpTest("\x02world")
 		time.Sleep(time.Second * 1)
 	}
 }

@@ -48,7 +48,7 @@ fastd_bind_socket(union fastd_sockaddr *laddr){
 		uprintf("binding ipv4 socket, port=%u addr=%08X\n", ntohs(laddr->in4.sin_port), laddr->in4.sin_addr.s_addr);
 	} else if (laddr->sa.sa_family == AF_INET6) {
 		uprintf("binding ipv6 socket\n");
-	} else{
+	} else {
 		uprintf("unknown family: %u\n", laddr->sa.sa_family);
 	}
 	error = sobind(fastd_sock, &laddr->sa, curthread);
@@ -83,14 +83,42 @@ fastd_destroy_socket(){
 
 static void
 fastd_rcv_udp_packet(struct mbuf *m, int offset, struct inpcb *inpcb,
-    const struct sockaddr *saddr, void *xfso)
+    const struct sockaddr *sa, void *xfso)
 {
 
-	uprintf("fastd: received UDP packet");
-	goto out;
+	// Ensure packet header exists
+	M_ASSERTPKTHDR(m);
+
+	struct fastd_header *fdh, fastdhdr;
+	offset += sizeof(struct udphdr);
+
+	if (sa->sa_family == AF_INET){
+		struct sockaddr_in *sin = (struct sockaddr_in *)sa;
+		printf("fastd: received UDP packet port=%u offset=%d hdrlen=%d \n", ntohs(sin->sin_port), offset, m->m_pkthdr.len);
+	}
+
+	if (m->m_pkthdr.len < offset + sizeof(struct fastd_header))
+		goto out;
+
+	if (__predict_false(m->m_len < offset + sizeof(struct fastd_header))) {
+		m_copydata(m, offset, sizeof(struct fastd_header),
+		    (caddr_t) &fastdhdr);
+		fdh = &fastdhdr;
+	} else
+		fdh = mtodo(m, offset);
+
+	switch (fdh->fdh_type){
+	case FASTD_HDR_CTRL:
+		// TODO forward to character device
+		break;
+	case FASTD_HDR_DATA:
+		// TODO forward to network interface
+		break;
+	default:
+		printf("invalid fastd-packet type=%02X\n", fdh->fdh_type);
+	}
 
 out:
 	if (m != NULL)
 		m_freem(m);
-
 }
