@@ -94,7 +94,8 @@ fastd_rcv_udp_packet(struct mbuf *m, int offset, struct inpcb *inpcb,
 	M_ASSERTPKTHDR(m);
 
 	struct fastd_message *fastd_msg;
-	struct fastd_header *fdh, fastd_hdr;
+	char msg_type;
+	u_int datalen;
 	offset += sizeof(struct udphdr);
 
 	if (sa->sa_family == AF_INET){
@@ -102,25 +103,23 @@ fastd_rcv_udp_packet(struct mbuf *m, int offset, struct inpcb *inpcb,
 		printf("fastd: received UDP packet port=%u offset=%d hdrlen=%d \n", ntohs(sin->sin_port), offset, m->m_pkthdr.len);
 	}
 
-	if (m->m_pkthdr.len < offset + sizeof(struct fastd_header))
+	// drop UDP packets with less than 4 bytes payload
+	if (m->m_pkthdr.len < offset + 4)
 		goto out;
 
-	if (__predict_false(m->m_len < offset + sizeof(struct fastd_header))) {
-		// message is too short
-		m_copydata(m, offset, sizeof(struct fastd_header), (caddr_t) &fastd_hdr);
-		fdh = &fastd_hdr;
-	} else
-		fdh = mtodo(m, offset);
+	m_copydata(m, offset, 1, (caddr_t) &msg_type);
 
-	switch (fdh->fdh_type){
+	switch (msg_type){
 	case FASTD_HDR_CTRL:
-		fastd_msg = malloc(sizeof(struct fastd_message), M_FASTD, M_WAITOK);
+		datalen   = m->m_len - offset;
+		fastd_msg = malloc(sizeof(struct fastd_message) + datalen, M_FASTD, M_WAITOK);
+		fastd_msg->datalen = datalen;
+
 		// Copy address
 		memcpy((void *)&fastd_msg->sockaddr, sa, sizeof(union fastd_sockaddr));
 
 		// Copy fastd packet
-		fastd_msg->packet_len = min(sizeof(struct fastd_packet), m->m_len - offset);
-		m_copydata(m, offset, fastd_msg->packet_len, (caddr_t) &fastd_msg->packet);
+		m_copydata(m, offset, datalen, (caddr_t) &fastd_msg->data);
 
 		// Store into ringbuffer to character device
 		buf_ring_enqueue(fastd_msgbuf, fastd_msg);
@@ -129,7 +128,7 @@ fastd_rcv_udp_packet(struct mbuf *m, int offset, struct inpcb *inpcb,
 		// TODO forward to network interface
 		break;
 	default:
-		printf("invalid fastd-packet type=%02X\n", fdh->fdh_type);
+		printf("invalid fastd-packet type=%02X\n", msg_type);
 	}
 
 out:

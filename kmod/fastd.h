@@ -25,27 +25,14 @@ union fastd_sockaddr {
   struct sockaddr_in6 in6;
 };
 
-struct fastd_header {
-  uint8_t   fdh_type;
 #define FASTD_HDR_CTRL  0x01
 #define FASTD_HDR_DATA  0x02
-  uint8_t   fdh_dummy;
-  uint16_t  fdh_length;
-};
-
-// header + data
-struct fastd_packet {
-  struct fastd_header   header;
-  char data[FASTD_MAX_DATA_SIZE];
-};
 
 // sockaddr + (header + data)
 struct fastd_message {
-  union  fastd_sockaddr sockaddr;
-  u_int                 packet_len;
-  struct fastd_packet   packet;
+  uint8_t              datalen;
+  union fastd_sockaddr sockaddr;
+  char                 data[0];
 };
-
-
 
 #endif /* FASTD_H */
