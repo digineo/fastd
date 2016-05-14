@@ -117,8 +117,11 @@ fastd_rcv_udp_packet(struct mbuf *m, int offset, struct inpcb *inpcb,
 		fastd_msg = malloc(sizeof(struct fastd_message), M_FASTD, M_WAITOK);
 		// Copy address
 		memcpy((void *)&fastd_msg->sockaddr, sa, sizeof(union fastd_sockaddr));
+
 		// Copy fastd packet
-		m_copydata(m, offset, min(sizeof(struct fastd_packet), m->m_len - offset), (caddr_t) &fastd_msg->packet);
+		fastd_msg->packet_len = min(sizeof(struct fastd_packet), m->m_len - offset);
+		m_copydata(m, offset, fastd_msg->packet_len, (caddr_t) &fastd_msg->packet);
+
 		// Store into ringbuffer to character device
 		buf_ring_enqueue(fastd_msgbuf, fastd_msg);
 		break;

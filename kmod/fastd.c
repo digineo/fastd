@@ -44,6 +44,8 @@ fastd_write(struct cdev *dev, struct uio *uio, int ioflag)
 {
 	int error = 0;
 
+	uprintf("Written.\n");
+
 	return (error);
 }
 
@@ -51,6 +53,21 @@ static int
 fastd_read(struct cdev *dev, struct uio *uio, int ioflag)
 {
 	int error = 0;
+	struct fastd_message *msg;
+	size_t tomove;
+
+	// dequeue next message
+	msg = buf_ring_dequeue_mc(fastd_msgbuf);
+
+	if (msg != NULL) {
+		// move message to device
+		tomove = MIN(uio->uio_resid, msg->packet_len);
+		error  = uiomove(&msg->packet, tomove, uio);
+		free(msg, M_FASTD);
+	}
+
+	if (error != 0)
+		uprintf("Read failed.\n");
 
 	return (error);
 }

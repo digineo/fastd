@@ -42,6 +42,7 @@ struct fastd_packet {
 // sockaddr + (header + data)
 struct fastd_message {
   union  fastd_sockaddr sockaddr;
+  u_int                 packet_len;
   struct fastd_packet   packet;
 };
 
