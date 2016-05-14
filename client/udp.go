@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"net"
 )
 
@@ -10,6 +11,8 @@ func udpTest(msg string) {
 		IP:   listenAddr,
 		Port: int(listenPort),
 	}
+
+	log.Println("send packet")
 
 	conn, err := net.DialUDP("udp", nil, addr)
 	if err != nil {
