@@ -8,8 +8,16 @@
 #include <sys/ioccom.h>
 #include <sys/socketvar.h>
 #include <netinet/in.h>
+
+// ringbuffer
+#include <sys/param.h>
+#include <sys/buf_ring.h>
+#include <sys/mutex.h>
+
 #include "fastd.h"
 #include "socket.h"
+
+MALLOC_DEFINE(M_FASTD, "fastd_buffer", "buffer for fastd driver");
 
 #define BUFFER_SIZE     256
 
@@ -26,29 +34,15 @@ static struct cdevsw fastd_cdevsw = {
 	.d_name =	"fastd"
 };
 
-typedef struct fastd {
-	char buffer[BUFFER_SIZE];
-	int length;
-} fastd_t;
-
-static fastd_t *fastd_message;
 static struct cdev *fastd_dev;
+
+struct buf_ring *fastd_msgbuf;
+struct mtx       fastd_msgmtx;
 
 static int
 fastd_write(struct cdev *dev, struct uio *uio, int ioflag)
 {
 	int error = 0;
-
-	error = copyin(uio->uio_iov->iov_base, fastd_message->buffer,
-		MIN(uio->uio_iov->iov_len, BUFFER_SIZE - 1));
-	if (error != 0) {
-		uprintf("Write failed.\n");
-		return (error);
-	}
-
-	*(fastd_message->buffer + MIN(uio->uio_iov->iov_len, BUFFER_SIZE - 1)) = 0;
-
-	fastd_message->length = MIN(uio->uio_iov->iov_len, BUFFER_SIZE - 1);
 
 	return (error);
 }
@@ -57,15 +51,6 @@ static int
 fastd_read(struct cdev *dev, struct uio *uio, int ioflag)
 {
 	int error = 0;
-	int amount;
-
-	amount = MIN(uio->uio_resid,
-		(fastd_message->length - uio->uio_offset > 0) ?
-		 fastd_message->length - uio->uio_offset : 0);
-
-	error = uiomove(fastd_message->buffer + uio->uio_offset, amount, uio);
-	if (error != 0)
-		uprintf("Read failed.\n");
 
 	return (error);
 }
@@ -77,9 +62,9 @@ fastd_modevent(module_t mod __unused, int event, void *arg __unused)
 
 	switch (event) {
 	case MOD_LOAD:
-		fastd_message = malloc(sizeof(fastd_t), M_FASTD, M_WAITOK);
+		mtx_init(&fastd_msgmtx, "fastd", NULL, MTX_SPIN);
+		fastd_msgbuf = buf_ring_alloc(FASTD_MSG_BUFFER_SIZE, M_FASTD, M_WAITOK, &fastd_msgmtx);
 		fastd_dev = make_dev(&fastd_cdevsw, 0, UID_ROOT, GID_WHEEL, 0600, "fastd");
-
 		fastd_create_socket();
 
 		uprintf("fastd driver loaded.\n");
@@ -87,7 +72,9 @@ fastd_modevent(module_t mod __unused, int event, void *arg __unused)
 	case MOD_UNLOAD:
 		fastd_destroy_socket();
 		destroy_dev(fastd_dev);
-		free(fastd_message, M_FASTD);
+		buf_ring_free(fastd_msgbuf, M_FASTD);
+		mtx_destroy(&fastd_msgmtx);
+
 		uprintf("fastd driver unloaded.\n");
 		break;
 	default:

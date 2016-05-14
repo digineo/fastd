@@ -14,6 +14,10 @@
 #include <netinet/udp.h>
 #include <netinet/udp_var.h>
 
+// ringbuffer
+#include <sys/param.h>
+#include <sys/buf_ring.h>
+
 #include "socket.h"
 
 static struct socket *fastd_sock;
@@ -89,7 +93,8 @@ fastd_rcv_udp_packet(struct mbuf *m, int offset, struct inpcb *inpcb,
 	// Ensure packet header exists
 	M_ASSERTPKTHDR(m);
 
-	struct fastd_header *fdh, fastdhdr;
+	struct fastd_message *fastd_msg;
+	struct fastd_header *fdh, fastd_hdr;
 	offset += sizeof(struct udphdr);
 
 	if (sa->sa_family == AF_INET){
@@ -101,15 +106,21 @@ fastd_rcv_udp_packet(struct mbuf *m, int offset, struct inpcb *inpcb,
 		goto out;
 
 	if (__predict_false(m->m_len < offset + sizeof(struct fastd_header))) {
-		m_copydata(m, offset, sizeof(struct fastd_header),
-		    (caddr_t) &fastdhdr);
-		fdh = &fastdhdr;
+		// message is too short
+		m_copydata(m, offset, sizeof(struct fastd_header), (caddr_t) &fastd_hdr);
+		fdh = &fastd_hdr;
 	} else
 		fdh = mtodo(m, offset);
 
 	switch (fdh->fdh_type){
 	case FASTD_HDR_CTRL:
-		// TODO forward to character device
+		fastd_msg = malloc(sizeof(struct fastd_message), M_FASTD, M_WAITOK);
+		// Copy address
+		memcpy((void *)&fastd_msg->sockaddr, sa, sizeof(union fastd_sockaddr));
+		// Copy fastd packet
+		m_copydata(m, offset, min(sizeof(struct fastd_packet), m->m_len - offset), (caddr_t) &fastd_msg->packet);
+		// Store into ringbuffer to character device
+		buf_ring_enqueue(fastd_msgbuf, fastd_msg);
 		break;
 	case FASTD_HDR_DATA:
 		// TODO forward to network interface

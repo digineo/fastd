@@ -1,13 +1,50 @@
 #ifndef FASTD_H
 #define FASTD_H
 
-#include <sys/malloc.h>
+#include <sys/types.h>
 #include <sys/ioccom.h>
+#include <sys/socket.h>
+#include <sys/socketvar.h>
+#include <netinet/in.h>
+
+MALLOC_DECLARE(M_FASTD);
 
 #define FASTD_BIND          _IOW('F', 1, struct sockaddr_in)
 #define FASTD_CLOSE         _IO('F', 2)
 
-MALLOC_DECLARE(M_FASTD);
-MALLOC_DEFINE(M_FASTD, "fastd_buffer", "buffer for fastd driver");
+#define FASTD_MSG_BUFFER_SIZE 50
+#define FASTD_MAX_DATA_SIZE   1024
+
+extern struct buf_ring *fastd_msgbuf;
+extern struct mtx       fastd_msgmtx;
+
+// For both IPv4 and IPv6
+union fastd_sockaddr {
+  struct sockaddr sa;
+  struct sockaddr_in  in4;
+  struct sockaddr_in6 in6;
+};
+
+struct fastd_header {
+  uint8_t   fdh_type;
+#define FASTD_HDR_CTRL  0x01
+#define FASTD_HDR_DATA  0x02
+  uint8_t   fdh_dummy;
+  uint16_t  fdh_length;
+};
+
+// header + data
+struct fastd_packet {
+  struct fastd_header   header;
+  char data[FASTD_MAX_DATA_SIZE];
+};
+
+// sockaddr + (header + data)
+struct fastd_message {
+  union  fastd_sockaddr sockaddr;
+  struct fastd_packet   packet;
+};
+
+
 
 #endif /* FASTD_H */
