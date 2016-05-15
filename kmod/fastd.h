@@ -34,7 +34,7 @@ struct fastd_socket {
 #define FASTD_HDR_DATA  0x02
 
 struct fastd_inaddr {
-  char      address[16]; // IPv4/IPv6 address
+  char      addr[16]; // IPv4/IPv6 address
   in_port_t port;
 };
 
