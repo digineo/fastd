@@ -43,8 +43,13 @@ static int
 fastd_write(struct cdev *dev, struct uio *uio, int ioflag)
 {
 	int error = 0;
+	if (uio->uio_iov->iov_len < sizeof(struct fastd_message) - sizeof(uint16_t)){
+		uprintf("message too short.\n");
+		error = EINVAL;
+		return (error);
+	}
 
-	uprintf("Written.\n");
+	error = fastd_send_packet(uio);
 
 	return (error);
 }

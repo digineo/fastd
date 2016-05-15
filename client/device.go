@@ -10,25 +10,61 @@ import (
 
 const SockaddrSize = syscall.SizeofSockaddrInet6
 
+var dev *os.File
+
+type Device struct {
+	f os.File
+}
+
+func OpenDevice() error {
+	var err error
+	dev, err = os.OpenFile(DevicePath, os.O_RDWR, 0644)
+	return err
+}
+
+func CloseDevice() {
+	if dev != nil {
+		dev.Close()
+	}
+}
+
+func bind() error {
+	addr := sockaddrToRaw(listenAddr, listenPort)
+	return ioctl(dev.Fd(), ioctl_BIND, uintptr(addr))
+}
+
+func close() error {
+	return ioctl(dev.Fd(), ioctl_CLOSE, 0)
+}
+
 func readPackets() error {
 	buf := make([]byte, 1500)
 
-	f, err := os.OpenFile(DevicePath, os.O_RDONLY, 0644)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-
 	for {
-		i, err := f.Read(buf)
+		i, err := dev.Read(buf)
 		if err == io.EOF {
 			time.Sleep(time.Millisecond * 100)
 		} else if err != nil {
 			return err
 		} else {
-			err, msg := parseMessage(buf[:i])
+			log.Println(buf[:i])
+			msg, err := parseMessage(buf[:i])
 			log.Println("received message:", err, msg)
+
+			src := msg.Src
+			dst := msg.Dest
+			msg.Dest = src
+			msg.Src = dst
+
+			writePaket(msg)
 		}
 	}
+}
 
+func writePaket(msg *Message) error {
+	bytes := msg.Marshal()
+	i, err := dev.Write(bytes)
+	log.Println("send:", bytes)
+	log.Println("written:", i, err)
+	return err
 }

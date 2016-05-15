@@ -21,8 +21,7 @@
 #include "socket.h"
 
 static struct fastd_socket fastd_sock;
-static void	fastd_rcv_udp_packet(struct mbuf *, int, struct inpcb *,
-		    const struct sockaddr *, void *);
+static void	fastd_rcv_udp_packet(struct mbuf *, int, struct inpcb *, const struct sockaddr *, void *);
 
 inline static int
 isIPv4(const struct fastd_inaddr *inaddr){
@@ -188,3 +187,53 @@ out:
 	if (m != NULL)
 		m_freem(m);
 }
+
+int
+fastd_send_packet(struct uio *uio) {
+	int error;
+	size_t datalen, addrlen;
+	struct fastd_message msg;
+	struct mbuf *m = NULL;
+	struct sockaddr dst_addr;
+
+	if (fastd_sock.sock == NULL) {
+		return EIO;
+	}
+
+	addrlen = 2 * sizeof(struct fastd_inaddr);
+	datalen = uio->uio_iov->iov_len - addrlen;
+
+	// Copy addresses from user memory
+	error = uiomove((char *)&msg + sizeof(uint16_t), addrlen, uio);
+	if (error != 0){
+		goto out;
+	}
+
+	// Build destination address
+	inet_to_sock((union fastd_sockaddr *)&dst_addr, &msg.dst);
+
+	// Allocate space for packet
+	m = m_getm(NULL, datalen, M_WAITOK, MT_DATA);
+
+	// Set mbuf current data length
+	m->m_len = m->m_pkthdr.len = datalen;
+
+	// Copy payload from user memory
+	error = uiomove(m->m_data, datalen, uio);
+	if (error != 0){
+		goto fail;
+	}
+
+	// Send packet
+	error = sosend(fastd_sock.sock, &dst_addr, NULL, m, NULL, 0, uio->uio_td);
+	if (error != 0){
+		goto fail;
+	}
+
+	goto out;
+fail:
+	m_free(m);
+out:
+	return (error);
+}
+
