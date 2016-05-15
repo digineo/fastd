@@ -75,3 +75,23 @@ func parseMessage(buf []byte) (msg *Message, err error) {
 
 	return
 }
+
+func (msg *Message) Marshal() []byte {
+	bytes := make([]byte, 1500)
+	//sockaddr := sockaddrToRaw(msg.Address, msg.Port)
+	// FIXME
+
+	i := SockaddrSize
+	bytes[i] = msg.Packet.Type
+	i += 4
+
+	for key, value := range msg.Packet.Records {
+		// TODO length check
+		binary.LittleEndian.PutUint16(bytes[i:], key)
+		binary.LittleEndian.PutUint16(bytes[i+2:], uint16(len(value)))
+		copy(bytes[i+4:], value)
+		i += 4 + len(value)
+	}
+
+	return bytes[:i]
+}

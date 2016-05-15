@@ -29,4 +29,13 @@ func TestParseMessage(t *testing.T) {
 
 	// Sender key
 	assert.Equal(32, len(msg.Packet.Records[0x0006]))
+
+	// Marshaling
+	assert.Equal(len(bytes), len(msg.Marshal()))
+
+	// Parse marshaled message
+	msg2, err := parseMessage(msg.Marshal())
+	assert.Nil(err)
+	assert.NotNil(msg2)
+	assert.EqualValues(msg.Marshal(), msg2.Marshal())
 }
