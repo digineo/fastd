@@ -124,11 +124,6 @@ fastd_rcv_udp_packet(struct mbuf *m, int offset, struct inpcb *inpcb,
 	fso = xfso;
 	offset += sizeof(struct udphdr);
 
-	if (sa_src->sa_family == AF_INET){
-		struct sockaddr_in *sin = (struct sockaddr_in *)sa_src;
-		printf("fastd: received UDP packet port=%u offset=%d hdrlen=%d \n", ntohs(sin->sin_port), offset, m->m_pkthdr.len);
-	}
-
 	// drop UDP packets with less than 4 bytes payload
 	if (m->m_pkthdr.len < offset + 4)
 		goto out;
