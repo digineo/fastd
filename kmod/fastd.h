@@ -25,13 +25,19 @@ union fastd_sockaddr {
   struct sockaddr_in6 in6;
 };
 
+struct fastd_socket {
+  struct socket        *sock;
+  union fastd_sockaddr  laddr;
+};
+
 #define FASTD_HDR_CTRL  0x01
 #define FASTD_HDR_DATA  0x02
 
 // sockaddr + (header + data)
 struct fastd_message {
-  uint8_t              datalen;
-  union fastd_sockaddr sockaddr;
+  uint16_t             datalen;
+  union fastd_sockaddr src;
+  union fastd_sockaddr dst;
   char                 data[0];
 };
 

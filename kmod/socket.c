@@ -20,7 +20,7 @@
 
 #include "socket.h"
 
-static struct socket *fastd_sock;
+static struct fastd_socket fastd_sock;
 static void	fastd_rcv_udp_packet(struct mbuf *, int, struct inpcb *,
 		    const struct sockaddr *, void *);
 
@@ -29,7 +29,7 @@ fastd_create_socket(){
 	int error;
 
 	uprintf("create socket\n");
-	error = socreate(PF_INET, &fastd_sock, SOCK_DGRAM, IPPROTO_UDP, curthread->td_ucred, curthread);
+	error = socreate(PF_INET, &fastd_sock.sock, SOCK_DGRAM, IPPROTO_UDP, curthread->td_ucred, curthread);
 
 	if (error) {
 		uprintf("cannot create socket: %d\n", error);
@@ -41,7 +41,7 @@ int
 fastd_bind_socket(union fastd_sockaddr *laddr){
 	int error;
 
-	if (fastd_sock == NULL){
+	if (fastd_sock.sock == NULL){
 		error = fastd_create_socket();
 		if (error) {
 			goto out;
@@ -55,7 +55,7 @@ fastd_bind_socket(union fastd_sockaddr *laddr){
 	} else {
 		uprintf("unknown family: %u\n", laddr->sa.sa_family);
 	}
-	error = sobind(fastd_sock, &laddr->sa, curthread);
+	error = sobind(fastd_sock.sock, &laddr->sa, curthread);
 
 	if (error == EADDRINUSE){
 		uprintf("address in use\n");
@@ -65,7 +65,7 @@ fastd_bind_socket(union fastd_sockaddr *laddr){
 		goto out;
 	}
 
-	error = udp_set_kernel_tunneling(fastd_sock, fastd_rcv_udp_packet, NULL);
+	error = udp_set_kernel_tunneling(fastd_sock.sock, fastd_rcv_udp_packet, &fastd_sock);
 	if (error) {
 		uprintf("cannot set tunneling function: %d\n", error);
 	}else{
@@ -78,28 +78,31 @@ out:
 
 void
 fastd_destroy_socket(){
-	if (fastd_sock != NULL) {
+	if (fastd_sock.sock != NULL) {
 		uprintf("destroy socket\n");
-		soclose(fastd_sock);
-		fastd_sock = NULL;
+		soclose(fastd_sock.sock);
+		fastd_sock.sock = NULL;
 	}
 }
 
 static void
 fastd_rcv_udp_packet(struct mbuf *m, int offset, struct inpcb *inpcb,
-    const struct sockaddr *sa, void *xfso)
+    const struct sockaddr *sa_src, void *xfso)
 {
-
-	// Ensure packet header exists
-	M_ASSERTPKTHDR(m);
 
 	struct fastd_message *fastd_msg;
 	char msg_type;
 	u_int datalen;
+	struct fastd_socket *fso;
+
+	// Ensure packet header exists
+	M_ASSERTPKTHDR(m);
+
+	fso = xfso;
 	offset += sizeof(struct udphdr);
 
-	if (sa->sa_family == AF_INET){
-		struct sockaddr_in *sin = (struct sockaddr_in *)sa;
+	if (sa_src->sa_family == AF_INET){
+		struct sockaddr_in *sin = (struct sockaddr_in *)sa_src;
 		printf("fastd: received UDP packet port=%u offset=%d hdrlen=%d \n", ntohs(sin->sin_port), offset, m->m_pkthdr.len);
 	}
 
@@ -115,8 +118,9 @@ fastd_rcv_udp_packet(struct mbuf *m, int offset, struct inpcb *inpcb,
 		fastd_msg = malloc(sizeof(struct fastd_message) + datalen, M_FASTD, M_WAITOK);
 		fastd_msg->datalen = datalen;
 
-		// Copy address
-		memcpy((void *)&fastd_msg->sockaddr, sa, sizeof(union fastd_sockaddr));
+		// Copy addresses
+		memcpy(&fastd_msg->src, sa_src, sizeof(union fastd_sockaddr));
+		memcpy(&fastd_msg->dst, &fso->laddr, sizeof(union fastd_sockaddr));
 
 		// Copy fastd packet
 		m_copydata(m, offset, datalen, (caddr_t) &fastd_msg->data);

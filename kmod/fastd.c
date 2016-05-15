@@ -61,8 +61,8 @@ fastd_read(struct cdev *dev, struct uio *uio, int ioflag)
 
 	if (msg != NULL) {
 		// move message to device
-		tomove = MIN(uio->uio_resid, msg->datalen + sizeof(union fastd_sockaddr));
-		error  = uiomove(&msg->sockaddr, tomove, uio);
+		tomove = MIN(uio->uio_resid, sizeof(struct fastd_message) - sizeof(uint16_t) + msg->datalen);
+		error  = uiomove((char *)msg + sizeof(uint16_t), tomove, uio);
 		free(msg, M_FASTD);
 	}
 

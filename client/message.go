@@ -17,32 +17,31 @@ type Packet struct {
 	Records map[uint16][]byte
 }
 
+type Sockaddr struct {
+	IP   net.IP
+	Port uint16
+}
+
 type Message struct {
-	Address net.IP
-	Port    uint16
-	Packet  Packet
+	Src    *Sockaddr
+	Dest   *Sockaddr
+	Packet Packet
 }
 
 func parseMessage(buf []byte) (msg *Message, err error) {
 	// check size
-	if len(buf) < SockaddrSize+4 {
+	if len(buf) < 2*SockaddrSize+4 {
 		err = fmt.Errorf("packet too small (%d bytes)", len(buf))
 		return
 	}
 
-	// sockaddr
-	addr, port := parseRawSockaddr(buf)
-	if port == 0 || addr == nil {
-		err = fmt.Errorf("invalid sockaddr")
-		return
+	msg = &Message{
+		Src:  parseRawSockaddr(buf[SockaddrSize:]),
+		Dest: parseRawSockaddr(buf[2*SockaddrSize:]),
 	}
+	data := buf[2*SockaddrSize:]
 
 	// fastd header
-	data := buf[SockaddrSize:]
-	msg = &Message{
-		Port:    port,
-		Address: addr,
-	}
 	msg.Packet.Type = data[0]
 	msg.Packet.Records = make(map[uint16][]byte)
 	length := binary.BigEndian.Uint16(data[2:4])
@@ -81,7 +80,7 @@ func (msg *Message) Marshal() []byte {
 	//sockaddr := sockaddrToRaw(msg.Address, msg.Port)
 	// FIXME
 
-	i := SockaddrSize
+	i := SockaddrSize * 2
 	bytes[i] = msg.Packet.Type
 	i += 4
 
