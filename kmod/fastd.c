@@ -89,6 +89,15 @@ fastd_modevent(module_t mod __unused, int event, void *arg __unused)
 	case MOD_UNLOAD:
 		fastd_destroy_socket();
 		destroy_dev(fastd_dev);
+
+		// Free ringbuffer and stored items
+		struct fastd_message *msg;
+		while(1){
+			msg = buf_ring_dequeue_mc(fastd_msgbuf);
+			if (msg == NULL)
+				break;
+			free(msg, M_FASTD);
+		}
 		buf_ring_free(fastd_msgbuf, M_FASTD);
 		mtx_destroy(&fastd_msgmtx);
 
