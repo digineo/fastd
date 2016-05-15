@@ -24,6 +24,26 @@ static struct fastd_socket fastd_sock;
 static void	fastd_rcv_udp_packet(struct mbuf *, int, struct inpcb *,
 		    const struct sockaddr *, void *);
 
+// Converts a fastd_inaddr into a fixed length fastd_sockaddr
+inline static void
+sock_to_inet(struct fastd_inaddr *dst, const union fastd_sockaddr *src){
+	switch (src->sa.sa_family) {
+	case AF_INET:
+		memset(        &dst->address,      0x00, 10);
+		memset((char *)&dst->address + 10, 0xff, 2);
+		memcpy((char *)&dst->address + 12, &src->in4.sin_addr, 4);
+		memcpy(        &dst->port,         &src->in4.sin_port, 2);
+		break;
+	case AF_INET6:
+		memcpy(&dst->address, &src->in6.sin6_addr, 16);
+		memcpy(&dst->port,    &src->in6.sin6_port, 2);
+		break;
+	default:
+		panic("unsupported address family: %d", src->sa.sa_family);
+	}
+}
+
+
 int
 fastd_create_socket(){
 	int error;
@@ -47,6 +67,9 @@ fastd_bind_socket(union fastd_sockaddr *laddr){
 			goto out;
 		}
 	}
+
+	// Copy listen address
+	fastd_sock.laddr = *laddr;
 
 	if (laddr->sa.sa_family == AF_INET) {
 		uprintf("binding ipv4 socket, port=%u addr=%08X\n", ntohs(laddr->in4.sin_port), laddr->in4.sin_addr.s_addr);
@@ -119,8 +142,8 @@ fastd_rcv_udp_packet(struct mbuf *m, int offset, struct inpcb *inpcb,
 		fastd_msg->datalen = datalen;
 
 		// Copy addresses
-		memcpy(&fastd_msg->src, sa_src, sizeof(union fastd_sockaddr));
-		memcpy(&fastd_msg->dst, &fso->laddr, sizeof(union fastd_sockaddr));
+		sock_to_inet(&fastd_msg->src, (union fastd_sockaddr *)sa_src);
+		sock_to_inet(&fastd_msg->dst, &fso->laddr);
 
 		// Copy fastd packet
 		m_copydata(m, offset, datalen, (caddr_t) &fastd_msg->data);

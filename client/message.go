@@ -30,16 +30,16 @@ type Message struct {
 
 func parseMessage(buf []byte) (msg *Message, err error) {
 	// check size
-	if len(buf) < 2*SockaddrSize+4 {
+	if len(buf) < 40 {
 		err = fmt.Errorf("packet too small (%d bytes)", len(buf))
 		return
 	}
 
 	msg = &Message{
-		Src:  parseRawSockaddr(buf[SockaddrSize:]),
-		Dest: parseRawSockaddr(buf[2*SockaddrSize:]),
+		Src:  parseSockaddr(buf[0:18]),
+		Dest: parseSockaddr(buf[18:36]),
 	}
-	data := buf[2*SockaddrSize:]
+	data := buf[36:]
 
 	// fastd header
 	msg.Packet.Type = data[0]
@@ -77,20 +77,27 @@ func parseMessage(buf []byte) (msg *Message, err error) {
 
 func (msg *Message) Marshal() []byte {
 	bytes := make([]byte, 1500)
-	//sockaddr := sockaddrToRaw(msg.Address, msg.Port)
-	// FIXME
+	i := 0
 
-	i := SockaddrSize * 2
+	copy(bytes[i:], msg.Src.Raw())
+	i += 18
+
+	copy(bytes[i:], msg.Dest.Raw())
+	i += 18
+
 	bytes[i] = msg.Packet.Type
 	i += 4
 
+	// marshal records
 	for key, value := range msg.Packet.Records {
-		// TODO length check
 		binary.LittleEndian.PutUint16(bytes[i:], key)
 		binary.LittleEndian.PutUint16(bytes[i+2:], uint16(len(value)))
 		copy(bytes[i+4:], value)
 		i += 4 + len(value)
 	}
+
+	// Set length
+	binary.BigEndian.PutUint16(bytes[38:], uint16(i-40))
 
 	return bytes[:i]
 }

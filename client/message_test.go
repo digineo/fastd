@@ -18,7 +18,7 @@ func TestParseMessage(t *testing.T) {
 	assert.NotNil(msg)
 
 	assert.Equal("127.0.0.1", msg.Src.IP.String())
-	assert.Equal(19800, int(msg.Src.Port))
+	assert.Equal(8755, int(msg.Src.Port))
 	assert.Equal(7, len(msg.Packet.Records))
 
 	// Handshake type

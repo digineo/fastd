@@ -33,12 +33,17 @@ struct fastd_socket {
 #define FASTD_HDR_CTRL  0x01
 #define FASTD_HDR_DATA  0x02
 
-// sockaddr + (header + data)
+struct fastd_inaddr {
+  char      address[16]; // IPv4/IPv6 address
+  in_port_t port;
+};
+
+// src + dst address + (header + data)
 struct fastd_message {
-  uint16_t             datalen;
-  union fastd_sockaddr src;
-  union fastd_sockaddr dst;
-  char                 data[0];
+  uint16_t            datalen;
+  struct fastd_inaddr src;
+  struct fastd_inaddr dst;
+  char                data[0];
 };
 
 #endif /* FASTD_H */

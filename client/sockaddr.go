@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/binary"
 	"net"
 	"syscall"
 )
@@ -34,4 +35,22 @@ func parseRawSockaddr(buf []byte) *Sockaddr {
 	}
 
 	return addr
+}
+
+func parseSockaddr(buf []byte) *Sockaddr {
+	if len(buf) != 18 {
+		return nil
+	}
+
+	return &Sockaddr{
+		IP:   net.IP(buf[0:16]),
+		Port: (uint16(buf[16]) << 8) | uint16(buf[17]),
+	}
+}
+
+func (addr *Sockaddr) Raw() []byte {
+	raw := make([]byte, 18)
+	copy(raw, addr.IP.To16())
+	binary.LittleEndian.PutUint16(raw[16:], uint16(addr.Port))
+	return raw
 }
