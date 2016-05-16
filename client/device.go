@@ -51,18 +51,13 @@ func readPackets() error {
 			msg, err := parseMessage(buf[:i])
 			log.Println("received message:", err, msg)
 
-			src := msg.Src
-			dst := msg.Dest
-			msg.Dest = src
-			msg.Src = dst
-
-			writePaket(msg)
+			writePaket(msg.NewReply(0x02))
 		}
 	}
 }
 
 func writePaket(msg *Message) error {
-	bytes := msg.Marshal()
+	bytes := msg.Marshal(nil)
 	i, err := dev.Write(bytes)
 	log.Println("send:", bytes)
 	log.Println("written:", i, err)

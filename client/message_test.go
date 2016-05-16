@@ -8,10 +8,7 @@ import (
 
 func TestParseMessage(t *testing.T) {
 	assert := assert.New(t)
-
-	bytes, err := ioutil.ReadFile("testdata/null-cipher.dat")
-	assert.Nil(err)
-	assert.NotNil(bytes)
+	bytes := readTestdata("null-cipher.dat")
 
 	msg, err := parseMessage(bytes)
 	assert.Nil(err)
@@ -19,23 +16,42 @@ func TestParseMessage(t *testing.T) {
 
 	assert.Equal("127.0.0.1", msg.Src.IP.String())
 	assert.Equal(8755, int(msg.Src.Port))
-	assert.Equal(7, len(msg.Packet.Records))
+	assert.Equal(7, len(msg.Records))
 
 	// Handshake type
-	assert.Equal([]byte{1}, msg.Packet.Records[0x0000])
+	assert.Equal([]byte{1}, msg.Records[RECORD_HANDSHAKE_TYPE])
 
 	// Protocol name
-	assert.Equal("ec25519-fhmqvc", string(msg.Packet.Records[0x0005]))
+	assert.Equal("ec25519-fhmqvc", string(msg.Records[RECORD_PROTOCOL_NAME]))
 
 	// Sender key
-	assert.Equal(32, len(msg.Packet.Records[0x0006]))
+	assert.Equal(32, len(msg.Records[RECORD_SENDER_KEY]))
 
 	// Marshaling
-	assert.Equal(len(bytes), len(msg.Marshal()))
+	assert.Equal(len(bytes), len(msg.Marshal(nil)))
 
 	// Parse marshaled message
-	msg2, err := parseMessage(msg.Marshal())
+	msg2, err := parseMessage(msg.Marshal(nil))
 	assert.Nil(err)
 	assert.NotNil(msg2)
-	assert.EqualValues(msg.Marshal(), msg2.Marshal())
+	//assert.EqualValues(msg.Marshal(), msg2.Marshal())
+}
+
+func TestHandleMessage(t *testing.T) {
+	assert := assert.New(t)
+	bytes := readTestdata("null-cipher.dat")
+
+	msg, err := parseMessage(bytes)
+	assert.Nil(err)
+	assert.NotNil(msg)
+
+	handlePacket(msg)
+}
+
+func readTestdata(name string) []byte {
+	bytes, err := ioutil.ReadFile("testdata/" + name)
+	if err != nil {
+		panic(err)
+	}
+	return bytes
 }
