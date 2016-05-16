@@ -43,7 +43,7 @@ struct fastd_message {
   uint16_t            datalen;
   struct fastd_inaddr src;
   struct fastd_inaddr dst;
-  char                data[0];
+  char                data[];
 };
 
 #endif /* FASTD_H */
