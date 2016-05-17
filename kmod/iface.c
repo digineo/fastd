@@ -39,8 +39,9 @@
 
 
 struct fastd_softc {
-	// fastd_list is protected by global fastdmtx
-	TAILQ_ENTRY(fastd_softc) fastd_list;
+	// lists are protected by global fastdmtx
+	TAILQ_ENTRY(fastd_softc) fastd_list; // list of all interfaces
+	LIST_ENTRY(fastd_softc) fastd_flow_entry; // entry in flow table
 
 	struct ifnet *fastd_ifp;	/* the interface */
 	union fastd_sockaddr remote;	/* remote ip address and port */
@@ -52,11 +53,11 @@ struct fastd_softc {
 
 #define FASTD_HASH_SHIFT	6
 #define FASTD_HASH_SIZE		(1 << FASTD_HASH_SHIFT)
-#define FASTD_HASH(_val)	((_val) % FASTD_HASH_SIZE)
+#define FASTD_HASH(_sc)	((_sc)->remote.in4.sin_port % FASTD_HASH_SIZE)
 
 // Mapping from sources addresses to interfaces
 LIST_HEAD(fastd_softc_head, fastd_softc);
-struct fastd_softc_head fastd_flows[FASTD_HASH_SIZE];
+struct fastd_softc_head fastd_peers[FASTD_HASH_SIZE];
 
 static struct mtx fastdmtx;
 static const char fastdname[] = "fastd";
@@ -70,6 +71,9 @@ static void	fastd_destroy(struct fastd_softc *sc);
 static int	fastd_ifioctl(struct ifnet *, u_long, caddr_t);
 static int	fastd_ioctl_drvspec(struct fastd_softc *, struct ifdrv *, int);
 static struct if_clone *fastd_cloner;
+
+static void	fastd_add_peer(struct fastd_softc *);
+static void	fastd_remove_peer(struct fastd_softc *);
 
 static int	fastd_sockaddr_cmp(const union fastd_sockaddr *,
 		    const struct sockaddr *);
@@ -113,7 +117,7 @@ fastd_iface_load()
 	int i;
 
 	for (i = 0; i < FASTD_HASH_SIZE; i++) {
-		LIST_INIT(&fastd_flows[i]);
+		LIST_INIT(&fastd_peers[i]);
 	}
 
 	mtx_init(&fastdmtx, "fastdmtx", NULL, MTX_DEF);
@@ -136,7 +140,7 @@ fastd_iface_unload()
 	mtx_destroy(&fastdmtx);
 
 	for (i = 0; i < FASTD_HASH_SIZE; i++) {
-		KASSERT(LIST_EMPTY(&fastd_flows[i]), "fastd: list not empty");
+		KASSERT(LIST_EMPTY(&fastd_peers[i]), "fastd: list not empty");
 	}
 }
 
@@ -190,6 +194,7 @@ fastd_clone_destroy(struct ifnet *ifp)
 	sc = ifp->if_softc;
 
 	mtx_lock(&fastdmtx);
+	fastd_remove_peer(sc);
 	fastd_destroy(sc);
 	mtx_unlock(&fastdmtx);
 }
@@ -205,7 +210,27 @@ fastd_destroy(struct fastd_softc *sc)
 	free(sc, M_FASTD);
 }
 
+static void
+fastd_remove_peer(struct fastd_softc *sc)
+{
+	struct fastd_softc *entry;
+	// Remove from flows
+	LIST_FOREACH(entry, &fastd_peers[FASTD_HASH(sc)], fastd_flow_entry) {
+		if (entry->remote.in4.sin_port == sc->remote.in4.sin_port) {
+			LIST_REMOVE(entry, fastd_flow_entry);
+			break;
+		}
+	}
+}
 
+static void
+fastd_add_peer(struct fastd_softc *sc)
+{
+	if (sc->remote.in4.sin_port > 0){
+		// Add to flows
+		LIST_INSERT_HEAD(&fastd_peers[FASTD_HASH(sc)], sc, fastd_flow_entry);
+	}
+}
 
 
 static int
@@ -292,14 +317,14 @@ fastd_ctrl_get_config(struct fastd_softc *sc, void *arg)
 static int
 fastd_ctrl_set_remote(struct fastd_softc *sc, void *arg)
 {
-	struct iffastdcfg *cfg;
+	struct iffastdcfg *cfg = arg;
 	int error = 0;
 
-	cfg = arg;
-
-	printf("set port=%d\n", cfg->remote.port);
-
+	mtx_lock(&fastdmtx);
+	fastd_remove_peer(sc);
 	inet_to_sock(&sc->remote, &cfg->remote);
+	fastd_add_peer(sc);
+	mtx_unlock(&fastdmtx);
 
 	return (error);
 }
