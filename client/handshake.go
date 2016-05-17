@@ -1,7 +1,6 @@
 package main
 
 import (
-	//"github.com/GoKillers/libsodium-go/support"
 	"errors"
 	"log"
 )

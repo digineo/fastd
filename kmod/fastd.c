@@ -16,6 +16,7 @@
 
 #include "fastd.h"
 #include "socket.h"
+#include "iface.h"
 
 MALLOC_DEFINE(M_FASTD, "fastd_buffer", "buffer for fastd driver");
 
@@ -88,10 +89,12 @@ fastd_modevent(module_t mod __unused, int event, void *arg __unused)
 		fastd_msgbuf = buf_ring_alloc(FASTD_MSG_BUFFER_SIZE, M_FASTD, M_WAITOK, &fastd_msgmtx);
 		fastd_dev = make_dev(&fastd_cdevsw, 0, UID_ROOT, GID_WHEEL, 0600, "fastd");
 		fastd_create_socket();
+		fastd_iface_load();
 
 		uprintf("fastd driver loaded.\n");
 		break;
 	case MOD_UNLOAD:
+		fastd_iface_unload();
 		fastd_destroy_socket();
 		destroy_dev(fastd_dev);
 
@@ -135,6 +138,60 @@ fastd_ioctl(struct cdev *dev, u_long cmd, caddr_t data, int fflag, struct thread
 
 	return (error);
 }
+
+
+
+
+int
+isIPv4(const struct fastd_inaddr *inaddr){
+  char *buf = (char *) inaddr;
+  return (
+       (char)0x00 == (buf[0] | buf[1] | buf[2] | buf[3] | buf[4] | buf[5]| buf[6] | buf[7] | buf[8] | buf[9])
+    && (char)0xff == (buf[10] & buf[11])
+  );
+}
+
+// Converts a fastd_inaddr into a fixed length fastd_sockaddr
+void
+sock_to_inet(struct fastd_inaddr *dst, const union fastd_sockaddr *src){
+  switch (src->sa.sa_family) {
+  case AF_INET:
+    memset(        &dst->addr,      0x00, 10);
+    memset((char *)&dst->addr + 10, 0xff, 2);
+    memcpy((char *)&dst->addr + 12, &src->in4.sin_addr, 4);
+    memcpy(        &dst->port,      &src->in4.sin_port, 2);
+    break;
+  case AF_INET6:
+    memcpy(&dst->addr, &src->in6.sin6_addr, 16);
+    memcpy(&dst->port, &src->in6.sin6_port, 2);
+    break;
+  default:
+    panic("unsupported address family: %d", src->sa.sa_family);
+  }
+}
+
+// Converts a fastd_sockaddr into fastd_inaddr
+void
+inet_to_sock(union fastd_sockaddr *dst, const struct fastd_inaddr *src){
+  if (isIPv4(src)){
+    // zero struct
+    bzero(dst, sizeof(struct sockaddr_in));
+
+    dst->in4.sin_len    = sizeof(struct sockaddr_in);
+    dst->in4.sin_family = AF_INET;
+    memcpy(&dst->in4.sin_addr, (char *)&src->addr + 12, 4);
+    memcpy(&dst->in4.sin_port,         &src->port, 2);
+  }else{
+    // zero struct
+    bzero(dst, sizeof(struct sockaddr_in6));
+
+    dst->in6.sin6_len    = sizeof(struct sockaddr_in6);
+    dst->in6.sin6_family = AF_INET6;
+    memcpy(&dst->in6.sin6_addr, &src->addr, 16);
+    memcpy(&dst->in6.sin6_port, &src->port, 2);
+  }
+}
+
 
 
 DEV_MODULE(fastd, fastd_modevent, NULL);

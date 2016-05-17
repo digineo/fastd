@@ -6,7 +6,6 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"fmt"
-	"net"
 )
 
 type TLV_KEY uint16
@@ -31,11 +30,6 @@ const (
 )
 
 type Records map[TLV_KEY][]byte
-
-type Sockaddr struct {
-	IP   net.IP
-	Port uint16
-}
 
 type Message struct {
 	Src     *Sockaddr

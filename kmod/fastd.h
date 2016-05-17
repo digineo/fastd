@@ -46,4 +46,16 @@ struct fastd_message {
   char                data[];
 };
 
+
+int
+isIPv4(const struct fastd_inaddr *);
+
+void
+sock_to_inet(struct fastd_inaddr *, const union fastd_sockaddr *);
+
+// Converts a fastd_sockaddr into fastd_inaddr
+void
+inet_to_sock(union fastd_sockaddr *dst, const struct fastd_inaddr *src);
+
+
 #endif /* FASTD_H */
