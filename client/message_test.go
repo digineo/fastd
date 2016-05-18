@@ -45,7 +45,9 @@ func TestHandleMessage(t *testing.T) {
 	assert.Nil(err)
 	assert.NotNil(msg)
 
-	handlePacket(msg)
+	resp, err := handlePacket(msg)
+	assert.Nil(err)
+	assert.NotNil(resp)
 }
 
 func readTestdata(name string) []byte {

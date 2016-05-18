@@ -25,22 +25,17 @@ func handlePacket(msg *Message) (reply *Message, err error) {
 		senderKey := records[RECORD_SENDER_KEY]
 		recipientKey := records[RECORD_RECIPIENT_KEY]
 		senderHandshakeKey := records[RECORD_SENDER_HANDSHAKE_KEY]
-		tlvMac := records[RECORD_TLV_MAC]
 
 		if senderKey == nil {
-			errors.New("sender key missing")
+			err = errors.New("sender key missing")
 			return
 		}
 		if recipientKey == nil {
-			errors.New("recipient key missing")
+			err = errors.New("recipient key missing")
 			return
 		}
 		if senderHandshakeKey == nil {
-			errors.New("sender handshake key missing")
-			return
-		}
-		if tlvMac == nil {
-			errors.New("TLV authentication tag missing")
+			err = errors.New("sender handshake key missing")
 			return
 		}
 
@@ -54,7 +49,6 @@ func handlePacket(msg *Message) (reply *Message, err error) {
 		reply.Records[RECORD_SENDER_KEY] = recipientKey
 		reply.Records[RECORD_RECIPIENT_KEY] = senderKey
 		reply.Records[RECORD_RECIPIENT_HANDSHAKE_KEY] = senderHandshakeKey
-
 	case 3:
 	// Handshake finish
 	default:
