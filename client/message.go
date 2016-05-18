@@ -29,6 +29,12 @@ const (
 	RECORD_TLV_MAC
 )
 
+const (
+	REPLY_SUCCESS byte = iota
+	REPLY_RECORD_MISSING
+	REPLY_UNACCEPTABLE_VALUE
+)
+
 type Records map[TLV_KEY][]byte
 
 type Message struct {
@@ -90,22 +96,20 @@ func NewMessage(typ byte, src *Sockaddr, dst *Sockaddr) *Message {
 }
 
 // Creates a reply to the message
-func (msg *Message) NewReply(typ byte) *Message {
-	reply := NewMessage(typ, msg.Dst, msg.Src)
-	reply.Records[RECORD_REPLY_CODE] = []byte{0x00}
+func (msg *Message) NewReply() *Message {
+	reply := NewMessage(msg.Type+1, msg.Dst, msg.Src)
 	reply.Records[RECORD_MODE] = msg.Records[RECORD_MODE]
 	reply.Records[RECORD_PROTOCOL_NAME] = msg.Records[RECORD_PROTOCOL_NAME]
 	return reply
 }
 
-// Get a record
-func (msg *Message) Get(key TLV_KEY) []byte {
-	return msg.Records[key]
-}
+// Set error fields
+func (msg *Message) SetError(replyCode byte, errorDetail TLV_KEY) {
+	msg.Records[RECORD_REPLY_CODE] = []byte{replyCode}
 
-// Set a record
-func (msg *Message) Set(key TLV_KEY, value []byte) {
-	msg.Records[key] = value
+	value := make([]byte, 2)
+	binary.LittleEndian.PutUint16(value, uint16(errorDetail))
+	msg.Records[RECORD_ERROR_DETAIL] = value
 }
 
 // Serialize message and optionally add the HMAC

@@ -45,8 +45,7 @@ func TestHandleMessage(t *testing.T) {
 	assert.Nil(err)
 	assert.NotNil(msg)
 
-	resp, err := handlePacket(msg)
-	assert.Nil(err)
+	resp := handlePacket(msg)
 	assert.NotNil(resp)
 }
 

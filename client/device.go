@@ -51,7 +51,10 @@ func readPackets() error {
 			msg, err := parseMessage(buf[:i])
 			log.Println("received message:", err, msg)
 
-			writePaket(msg.NewReply(0x02))
+			if reply := handlePacket(msg); reply != nil {
+				writePaket(reply)
+			}
+
 		}
 	}
 }

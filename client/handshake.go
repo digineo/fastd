@@ -1,11 +1,10 @@
 package main
 
 import (
-	"errors"
 	"log"
 )
 
-func handlePacket(msg *Message) (reply *Message, err error) {
+func handlePacket(msg *Message) (reply *Message) {
 	records := msg.Records
 	val := records[RECORD_HANDSHAKE_TYPE]
 	if len(val) != 1 {
@@ -17,7 +16,7 @@ func handlePacket(msg *Message) (reply *Message, err error) {
 	switch t {
 	case 1:
 		// Handshake request
-		reply = msg.NewReply(0x02)
+		reply = msg.NewReply()
 		for k, v := range records {
 			log.Println(k, v)
 		}
@@ -27,15 +26,18 @@ func handlePacket(msg *Message) (reply *Message, err error) {
 		senderHandshakeKey := records[RECORD_SENDER_HANDSHAKE_KEY]
 
 		if senderKey == nil {
-			err = errors.New("sender key missing")
+			log.Println("sender key missing")
+			reply.SetError(REPLY_RECORD_MISSING, RECORD_SENDER_KEY)
 			return
 		}
 		if recipientKey == nil {
-			err = errors.New("recipient key missing")
+			log.Println("recipient key missing")
+			reply.SetError(REPLY_RECORD_MISSING, RECORD_RECIPIENT_KEY)
 			return
 		}
 		if senderHandshakeKey == nil {
-			err = errors.New("sender handshake key missing")
+			log.Println("sender handshake key missing")
+			reply.SetError(REPLY_RECORD_MISSING, RECORD_SENDER_HANDSHAKE_KEY)
 			return
 		}
 
@@ -43,6 +45,7 @@ func handlePacket(msg *Message) (reply *Message, err error) {
 
 		// TODO check recipientKey
 		// TODO check timeout
+		reply.Records[RECORD_REPLY_CODE] = []byte{REPLY_SUCCESS}
 		reply.Records[RECORD_METHOD_LIST] = []byte("null")
 		reply.Records[RECORD_VERSION_NAME] = []byte("v18")
 		reply.Records[RECORD_MTU] = records[RECORD_MTU]
@@ -50,7 +53,25 @@ func handlePacket(msg *Message) (reply *Message, err error) {
 		reply.Records[RECORD_RECIPIENT_KEY] = senderKey
 		reply.Records[RECORD_RECIPIENT_HANDSHAKE_KEY] = senderHandshakeKey
 	case 3:
-	// Handshake finish
+		reply = msg.NewReply()
+
+		// Handshake finish
+		methodName := msg.Records[RECORD_METHOD_NAME]
+		if methodName == nil {
+			log.Println("method name missing")
+			reply.SetError(REPLY_RECORD_MISSING, RECORD_METHOD_NAME)
+			return
+		}
+		if string(methodName) != "null" {
+			log.Println("method name invalid:", methodName)
+			reply.SetError(REPLY_UNACCEPTABLE_VALUE, RECORD_METHOD_NAME)
+			return
+		}
+
+		reply.Records[RECORD_REPLY_CODE] = []byte{REPLY_SUCCESS}
+
+		// TODO
+
 	default:
 		log.Printf("unsupported handshake type: %d", t)
 	}
