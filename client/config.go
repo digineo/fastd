@@ -5,8 +5,7 @@ import (
 )
 
 type Config struct {
-	keySecret []byte
-	keyPublic []byte
+	serverKeys KeyPair
 }
 
 var config = Config{}
@@ -20,6 +19,5 @@ func (c *Config) SetServerKey(secretHex string) {
 	if len(secret) != KEYSIZE {
 		panic("wrong key size")
 	}
-	c.keySecret = secret
-	c.keyPublic = GetPublic(secret)
+	c.serverKeys = NewKeyPair(secret)
 }
