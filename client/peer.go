@@ -1,9 +1,10 @@
 package main
 
 type Peer struct {
-	PublicKey          []byte
-	SharedHandshakeKey []byte
-	Sigma              []byte
+	publicKey        []byte
+	sharedKey        []byte
+	peerHandshakeKey []byte   // public handshake key from Alice
+	handshakeKey     *KeyPair // our handshake key
 
 	State  int
 	Ifname string
