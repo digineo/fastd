@@ -2,6 +2,7 @@ package main
 
 import (
 	"C"
+	"bytes"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/binary"
@@ -152,4 +153,17 @@ func (msg *Message) Marshal(key []byte) []byte {
 	binary.BigEndian.PutUint16(bytes[38:], uint16(i-40))
 
 	return bytes[:i]
+}
+
+// String representation of the records
+func (records Records) String() string {
+	var buffer bytes.Buffer
+
+	buffer.WriteString("Records[ ")
+	for key, val := range records {
+		buffer.WriteString(fmt.Sprintf("%#04x=%x ", key, val))
+	}
+	buffer.WriteString("]")
+
+	return buffer.String()
 }
