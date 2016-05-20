@@ -11,7 +11,7 @@ func TestParseMessage(t *testing.T) {
 	assert := assert.New(t)
 	bytes := readTestdata("null-cipher.dat")
 
-	msg, err := parseMessage(bytes)
+	msg, err := ParseMessage(bytes)
 	assert.Nil(err)
 	assert.NotNil(msg)
 
@@ -38,7 +38,7 @@ func TestParseMessage(t *testing.T) {
 	assert.Equal(len(bytes), len(msg.Marshal(nil)))
 
 	// Parse marshaled message
-	msg2, err := parseMessage(msg.Marshal(nil))
+	msg2, err := ParseMessage(msg.Marshal(nil))
 	assert.Nil(err)
 	assert.NotNil(msg2)
 	//assert.EqualValues(msg.Marshal(), msg2.Marshal())
@@ -48,7 +48,7 @@ func TestHandleMessage(t *testing.T) {
 	assert := assert.New(t)
 	bytes := readTestdata("null-cipher.dat")
 
-	msg, err := parseMessage(bytes)
+	msg, err := ParseMessage(bytes)
 	assert.Nil(err)
 	assert.NotNil(msg)
 

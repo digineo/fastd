@@ -45,15 +45,8 @@ type Message struct {
 	Records Records
 }
 
-func parseMessage(buf []byte) (msg *Message, err error) {
-	// check size
-	if len(buf) < 40 {
-		err = fmt.Errorf("packet too small (%d bytes)", len(buf))
-		return
-	}
-
-	msg = NewMessage(buf[37], parseSockaddr(buf[0:18]), parseSockaddr(buf[18:36]))
-	data := buf[36:]
+func (msg *Message) Unmarshal(data []byte) (err error) {
+	msg.Type = data[0]
 
 	// fastd header
 	length := binary.BigEndian.Uint16(data[2:4])
@@ -77,8 +70,10 @@ func parseMessage(buf []byte) (msg *Message, err error) {
 			return
 		}
 
-		// Add record
-		msg.Records[typ] = data[:length]
+		// Copy value and add record
+		val := make([]byte, length)
+		copy(val, data[:length])
+		msg.Records[typ] = val
 
 		// Strip data
 		data = data[length:]
@@ -87,18 +82,18 @@ func parseMessage(buf []byte) (msg *Message, err error) {
 	return
 }
 
-func NewMessage(typ byte, src *Sockaddr, dst *Sockaddr) *Message {
+func NewMessage() *Message {
 	return &Message{
-		Type:    typ,
-		Src:     src,
-		Dst:     dst,
 		Records: make(Records),
 	}
 }
 
 // Creates a reply to the message
 func (msg *Message) NewReply() *Message {
-	reply := NewMessage(msg.Type+1, msg.Dst, msg.Src)
+	reply := NewMessage()
+	reply.Type = msg.Type + 1
+	reply.Src = msg.Dst
+	reply.Dst = msg.Src
 	reply.Records[RECORD_MODE] = msg.Records[RECORD_MODE]
 	reply.Records[RECORD_PROTOCOL_NAME] = msg.Records[RECORD_PROTOCOL_NAME]
 	return reply
@@ -113,18 +108,26 @@ func (msg *Message) SetError(replyCode byte, errorDetail TLV_KEY) {
 	msg.Records[RECORD_ERROR_DETAIL] = value
 }
 
+func ParseMessage(buf []byte) (*Message, error) {
+	if len(buf) < 40 {
+		return nil, fmt.Errorf("packet too small (%d bytes)", len(buf))
+	}
+
+	msg := NewMessage()
+	msg.Type = buf[37]
+	msg.Src = parseSockaddr(buf[0:18])
+	msg.Dst = parseSockaddr(buf[18:36])
+	if err := msg.Unmarshal(buf[36:]); err != nil {
+		return nil, fmt.Errorf("unmarshal failed: %v", err)
+	}
+
+	return msg, nil
+}
+
 // Serialize message and optionally add the HMAC
 func (msg *Message) Marshal(key []byte) []byte {
 	bytes := make([]byte, 1500)
 	i := 0
-
-	// Source address
-	copy(bytes[i:], msg.Src.Raw())
-	i += 18
-
-	// Destination address
-	copy(bytes[i:], msg.Dst.Raw())
-	i += 18
 
 	// Header
 	bytes[i] = msg.Type
