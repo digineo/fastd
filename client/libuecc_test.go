@@ -29,16 +29,16 @@ func TestNewKeyPair(t *testing.T) {
 func TestMakeSharedHandshakeKey(t *testing.T) {
 	assert := assert.New(t)
 	config.SetServerKey("800e8ff23adcc5df5f6b911581667821ebecf1ecd95b10b6b5f92f4ebef7704c")
-	handshakeKey := NewKeyPair(MustDecodeString("684a0a467306a5a1b727b1b601c9b4157343ce2eda98f5b770ec02d1b0e72668"))
+	handshakeKey := NewKeyPair(MustDecodeString("a03b6ddf38b693dde2cbefd669ace99c169ca11eae097fb144c5ca9db1cfd176"))
 
 	peer := &Peer{
 		publicKey:        MustDecodeString("83369beddca777585167520fb54a7fb059102bf4e0a46dd5fb1c633d83db77a2"),
-		peerHandshakeKey: MustDecodeString("bbc1151719782317d29ebfb337a7d44d034aff46c1ae930573d398eee8c8efe0"),
+		peerHandshakeKey: MustDecodeString("b4dbdb0c05dd28204534fa27c5afca4dcda5397d833e3064f7a7281b249dc7c7"),
 		handshakeKey:     &handshakeKey,
 	}
 
 	assert.True(makeSharedHandshakeKey(peer))
-	assert.Equal("fda6af352d997b984030995772fecbde8b72dd2c8d2845465680162ef931afbf", hex.EncodeToString(peer.sharedKey))
+	assert.Equal("98a840f7d3845024b6cae090d86eeb72e2607a84ce8ee6ac25639d27e9696596", hex.EncodeToString(peer.sharedKey))
 }
 
 func MustDecodeString(str string) []byte {

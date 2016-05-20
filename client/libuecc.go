@@ -2,15 +2,38 @@ package main
 
 /*
 #cgo pkg-config: libuecc
+#include <unistd.h>
 #include <libuecc-7/libuecc/ecc.h>
+
+// Divides a secret key by 8
+// returns 0 on success
+static int divide_key(ecc_int256_t *key) {
+	uint8_t c = 0, c2;
+	ssize_t i;
+
+	for (i = 31; i >= 0; i--) {
+		c2 = key->p[i] << 5;
+		key->p[i] = (key->p[i] >> 3) | c;
+		c = c2;
+	}
+
+	return c;
+}
+
+// Multiplies a point by 8
+static void octuple_point(ecc_25519_work_t *p) {
+	ecc_25519_work_t work;
+	ecc_25519_double(&work, p);
+	ecc_25519_double(&work, &work);
+	ecc_25519_double(p, &work);
+}
 */
 import "C"
 
 import (
+	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
-	"golang.org/x/crypto/hkdf"
-	"io"
 )
 
 const (
@@ -54,8 +77,11 @@ func (keys *KeyPair) derivePublic() {
 
 	C.ecc_25519_scalarmult(&eccWork, &eccSecret, &C.ecc_25519_work_default_base)
 	C.ecc_25519_store_packed_legacy(&eccPublic, &eccWork)
-
 	copy(keys.public[:], eccPublic[:])
+
+	// Divide private key
+	C.divide_key(&eccSecret)
+	copy(keys.secret[:], eccSecret[:])
 }
 
 func unpackKey(key []byte) *C.ecc_25519_work_t {
@@ -82,13 +108,13 @@ func makeSharedHandshakeKey(peer *Peer) bool {
 	Y := peer.handshakeKey.public[:]
 
 	hash := sha256.New()
-	hash.Write(Y[:])
-	hash.Write(X[:])
-	hash.Write(B[:])
-	hash.Write(A[:])
+	hash.Write(Y)
+	hash.Write(X)
+	hash.Write(B)
+	hash.Write(A)
 
 	var d, e, s C.ecc_int256_t
-	hashSum := hash.Sum([]byte{})
+	hashSum := hash.Sum(nil)
 
 	copy(d[:], hashSum[:len(hashSum)/2])
 	copy(e[:], hashSum[len(hashSum)/2:])
@@ -109,7 +135,16 @@ func makeSharedHandshakeKey(peer *Peer) bool {
 	C.ecc_25519_scalarmult_bits(&work, &d, eccPeerKey, 128)
 	C.ecc_25519_add(&work, workXY, &work)
 
-	// TODO octuple_point(&work)
+	/*
+	  Both our secret keys have been divided by 8 before, so we multiply
+	  the point with 8 here to compensate.
+
+	  By multiplying with 8, we prevent small-subgroup attacks (8 is the order
+	  of the curves twist, see djb's Curve25519 paper). While the factor 8 should
+	  be in the private keys anyways, the reduction modulo the subgroup order (in ecc_25519_gf_*)
+	  will only preserve it if the point actually lies on our subgroup.
+	*/
+	C.octuple_point(&work)
 
 	C.ecc_25519_scalarmult(&work, &s, &work)
 
@@ -119,29 +154,33 @@ func makeSharedHandshakeKey(peer *Peer) bool {
 
 	// Store sigma
 	C.ecc_25519_store_packed_legacy(&eccSigma, &work)
-	var sigma []byte
-	copy(sigma, eccSigma[:])
+	var sigma [KEYSIZE]byte
+	copy(sigma[:], eccSigma[:])
 
 	// Derive shared key
-	peer.sharedKey = deriveKey(A, B, X, Y, sigma)
+	peer.sharedKey = deriveKey(A, B, X, Y, sigma[:])
 
 	return true
 }
 
 func deriveKey(A, B, X, Y, sigma []byte) []byte {
-	var info [4 * KEYSIZE]byte
+	var info [4*KEYSIZE + 1]byte
 
+	// create info bytes
 	copy(info[:], A)
-	copy(info[:KEYSIZE], B)
-	copy(info[:2*KEYSIZE], X)
-	copy(info[:3*KEYSIZE], Y)
+	copy(info[KEYSIZE:], B)
+	copy(info[2*KEYSIZE:], X)
+	copy(info[3*KEYSIZE:], Y)
+	info[len(info)-1] = 0x01
 
-	key := make([]byte, KEYSIZE)
-	hkdf := hkdf.New(sha256.New, sigma, nil, info[:])
-	_, err := io.ReadFull(hkdf, key)
-	if err != nil {
-		panic(err)
-	}
+	// extract
+	extractor := hmac.New(sha256.New, nil)
+	extractor.Write(sigma)
+	prk := extractor.Sum(nil)
 
-	return key
+	// expand
+	expander := hmac.New(sha256.New, prk)
+	expander.Write(info[:])
+
+	return expander.Sum(nil)
 }
