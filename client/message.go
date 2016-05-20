@@ -45,6 +45,100 @@ type Message struct {
 	Records Records
 }
 
+func NewMessage() *Message {
+	return &Message{
+		Records: make(Records),
+	}
+}
+
+// Creates a reply to the message
+func (msg *Message) NewReply() *Message {
+	reply := NewMessage()
+	reply.Type = msg.Type + 1
+	reply.Src = msg.Dst
+	reply.Dst = msg.Src
+	reply.Records[RECORD_MODE] = msg.Records[RECORD_MODE]
+	reply.Records[RECORD_PROTOCOL_NAME] = msg.Records[RECORD_PROTOCOL_NAME]
+	return reply
+}
+
+// Set error fields
+func (msg *Message) SetError(replyCode byte, errorDetail TLV_KEY) {
+	msg.Records[RECORD_REPLY_CODE] = []byte{replyCode}
+
+	value := make([]byte, 2)
+	binary.LittleEndian.PutUint16(value, uint16(errorDetail))
+	msg.Records[RECORD_ERROR_DETAIL] = value
+}
+
+func ParseMessage(buf []byte, includeSockaddr bool) (*Message, error) {
+	msg := NewMessage()
+	offset := 0
+	if includeSockaddr {
+		if len(buf) < 40 {
+			return nil, fmt.Errorf("packet too small (%d bytes)", len(buf))
+		}
+		msg.Src = parseSockaddr(buf[0:18])
+		msg.Dst = parseSockaddr(buf[18:36])
+		offset = 36
+	} else if len(buf) < 4 {
+		return nil, fmt.Errorf("packet too small (%d bytes)", len(buf))
+	}
+
+	msg.Type = buf[offset]
+	if err := msg.Unmarshal(buf[offset:]); err != nil {
+		return nil, fmt.Errorf("unmarshal failed: %v", err)
+	}
+
+	return msg, nil
+}
+
+// Serialize message and optionally add the HMAC
+func (msg *Message) Marshal(signKey []byte, includeSockaddr bool) []byte {
+	bytes := make([]byte, 1500)
+	offset := 0
+
+	if includeSockaddr {
+		msg.Src.Write(bytes)
+		msg.Dst.Write(bytes[18:])
+		offset = 36
+	}
+
+	n := msg.MarshalPayload(bytes[offset:], signKey)
+	return bytes[:offset+n]
+}
+
+func (msg *Message) MarshalPayload(out []byte, signKey []byte) int {
+	// Header
+	out[0] = msg.Type
+	i := 4
+
+	// Function for appending records
+	addRecord := func(key TLV_KEY, val []byte) {
+		binary.LittleEndian.PutUint16(out[i:], uint16(key))
+		binary.LittleEndian.PutUint16(out[i+2:], uint16(len(val)))
+		copy(out[i+4:], val)
+		i += 4 + len(val)
+	}
+
+	// Append records
+	for key, val := range msg.Records {
+		addRecord(key, val)
+	}
+
+	// Add HMAC (optional)
+	if signKey != nil {
+		mac := hmac.New(sha256.New, signKey)
+		mac.Write(out[40:i])
+		addRecord(RECORD_TLV_MAC, mac.Sum(nil))
+	}
+
+	// Set length
+	binary.BigEndian.PutUint16(out[2:], uint16(i-4))
+
+	return i
+}
+
 func (msg *Message) Unmarshal(data []byte) (err error) {
 	msg.Type = data[0]
 
@@ -80,82 +174,6 @@ func (msg *Message) Unmarshal(data []byte) (err error) {
 	}
 
 	return
-}
-
-func NewMessage() *Message {
-	return &Message{
-		Records: make(Records),
-	}
-}
-
-// Creates a reply to the message
-func (msg *Message) NewReply() *Message {
-	reply := NewMessage()
-	reply.Type = msg.Type + 1
-	reply.Src = msg.Dst
-	reply.Dst = msg.Src
-	reply.Records[RECORD_MODE] = msg.Records[RECORD_MODE]
-	reply.Records[RECORD_PROTOCOL_NAME] = msg.Records[RECORD_PROTOCOL_NAME]
-	return reply
-}
-
-// Set error fields
-func (msg *Message) SetError(replyCode byte, errorDetail TLV_KEY) {
-	msg.Records[RECORD_REPLY_CODE] = []byte{replyCode}
-
-	value := make([]byte, 2)
-	binary.LittleEndian.PutUint16(value, uint16(errorDetail))
-	msg.Records[RECORD_ERROR_DETAIL] = value
-}
-
-func ParseMessage(buf []byte) (*Message, error) {
-	if len(buf) < 40 {
-		return nil, fmt.Errorf("packet too small (%d bytes)", len(buf))
-	}
-
-	msg := NewMessage()
-	msg.Type = buf[37]
-	msg.Src = parseSockaddr(buf[0:18])
-	msg.Dst = parseSockaddr(buf[18:36])
-	if err := msg.Unmarshal(buf[36:]); err != nil {
-		return nil, fmt.Errorf("unmarshal failed: %v", err)
-	}
-
-	return msg, nil
-}
-
-// Serialize message and optionally add the HMAC
-func (msg *Message) Marshal(key []byte) []byte {
-	bytes := make([]byte, 1500)
-	i := 0
-
-	// Header
-	bytes[i] = msg.Type
-	i += 4
-
-	addRecord := func(key TLV_KEY, val []byte) {
-		binary.LittleEndian.PutUint16(bytes[i:], uint16(key))
-		binary.LittleEndian.PutUint16(bytes[i+2:], uint16(len(val)))
-		copy(bytes[i+4:], val)
-		i += 4 + len(val)
-	}
-
-	// Append records
-	for key, val := range msg.Records {
-		addRecord(key, val)
-	}
-
-	// Add HMAC (optional)
-	if key != nil {
-		mac := hmac.New(sha256.New, key)
-		mac.Write(bytes[40:i])
-		addRecord(RECORD_TLV_MAC, mac.Sum(nil))
-	}
-
-	// Set length
-	binary.BigEndian.PutUint16(bytes[38:], uint16(i-40))
-
-	return bytes[:i]
 }
 
 // String representation of the records

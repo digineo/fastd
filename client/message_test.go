@@ -11,7 +11,7 @@ func TestParseMessage(t *testing.T) {
 	assert := assert.New(t)
 	bytes := readTestdata("null-cipher.dat")
 
-	msg, err := ParseMessage(bytes)
+	msg, err := ParseMessage(bytes, true)
 	assert.Nil(err)
 	assert.NotNil(msg)
 
@@ -35,10 +35,10 @@ func TestParseMessage(t *testing.T) {
 	assert.Equal("bbc1151719782317d29ebfb337a7d44d034aff46c1ae930573d398eee8c8efe0", hex.EncodeToString(msg.Records[RECORD_SENDER_HANDSHAKE_KEY]))
 
 	// Marshaling
-	assert.Equal(len(bytes), len(msg.Marshal(nil)))
+	assert.Equal(len(bytes), len(msg.Marshal(nil, true)))
 
 	// Parse marshaled message
-	msg2, err := ParseMessage(msg.Marshal(nil))
+	msg2, err := ParseMessage(msg.Marshal(nil, true), true)
 	assert.Nil(err)
 	assert.NotNil(msg2)
 	//assert.EqualValues(msg.Marshal(), msg2.Marshal())
@@ -48,7 +48,7 @@ func TestHandleMessage(t *testing.T) {
 	assert := assert.New(t)
 	bytes := readTestdata("null-cipher.dat")
 
-	msg, err := ParseMessage(bytes)
+	msg, err := ParseMessage(bytes, true)
 	assert.Nil(err)
 	assert.NotNil(msg)
 

@@ -78,19 +78,16 @@ func (srv *KernelServer) read(buf []byte) error {
 		return fmt.Errorf("packet too small (%d bytes)", len(buf))
 	}
 
-	msg := NewMessage()
-	msg.Src = parseSockaddr(buf[0:18])
-	msg.Dst = parseSockaddr(buf[18:36])
-	if err := msg.Unmarshal(buf[36:]); err != nil {
+	if msg, err := ParseMessage(buf, true); err != nil {
 		return fmt.Errorf("unmarshal failed: %v", err)
+	} else {
+		srv.recv <- msg
+		return nil
 	}
-
-	srv.recv <- msg
-	return nil
 }
 
 func (srv *KernelServer) Write(msg *Message) error {
-	bytes := msg.Marshal(nil)
+	bytes := msg.Marshal(nil, true)
 	i, err := srv.dev.Write(bytes)
 	log.Println("send:", bytes)
 	log.Println("written:", i, err)
