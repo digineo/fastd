@@ -10,10 +10,6 @@ func handlePacket(msg *Message) (reply *Message) {
 		return
 	}
 
-	//for k, v := range records {
-	//	log.Println(k, v)
-	//}
-
 	t := val[0]
 	switch t {
 	case 1:
@@ -37,6 +33,8 @@ func respondHandshake(msg *Message) (reply *Message) {
 	recipientKey := records[RECORD_RECIPIENT_KEY]
 	senderHandshakeKey := records[RECORD_SENDER_HANDSHAKE_KEY]
 
+	log.Printf("received handshake from %s[%d] using fastd %s", msg.Src.IP.String(), msg.Src.Port, records[RECORD_VERSION_NAME])
+
 	if senderKey == nil {
 		log.Println("sender key missing")
 		reply.SetError(REPLY_RECORD_MISSING, RECORD_SENDER_KEY)
@@ -52,8 +50,6 @@ func respondHandshake(msg *Message) (reply *Message) {
 		reply.SetError(REPLY_RECORD_MISSING, RECORD_SENDER_HANDSHAKE_KEY)
 		return
 	}
-
-	log.Printf("received handshake from %s[%d] using fastd %s", msg.Src.IP.String(), msg.Src.Port, records[RECORD_VERSION_NAME])
 
 	// TODO check recipientKey
 	// TODO check timeout
