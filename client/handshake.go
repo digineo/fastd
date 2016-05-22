@@ -15,7 +15,6 @@ func handlePacket(msg *Message) (reply *Message) {
 	switch t {
 	case 1:
 		reply = respondHandshake(msg)
-		// TODO
 	case 3:
 		reply = handleFinishHandshake(msg)
 	default:
@@ -71,7 +70,7 @@ func respondHandshake(msg *Message) (reply *Message) {
 	}
 
 	// TODO check timeout
-	reply.signKey = peer.sharedKey
+	reply.SignKey = peer.sharedKey
 	reply.Records[RECORD_REPLY_CODE] = []byte{REPLY_SUCCESS}
 	reply.Records[RECORD_METHOD_LIST] = []byte("null")
 	reply.Records[RECORD_VERSION_NAME] = []byte("v18")

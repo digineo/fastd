@@ -42,7 +42,8 @@ type Message struct {
 	Dst     *Sockaddr
 	Type    byte
 	Records Records
-	signKey []byte
+	SignKey []byte
+	raw     []byte
 }
 
 func NewMessage() *Message {
@@ -72,6 +73,18 @@ func (msg *Message) SetError(replyCode byte, errorDetail TLV_KEY) {
 	msg.Records[RECORD_ERROR_DETAIL] = value
 }
 
+// Calculate HMAC and verify it
+func (msg *Message) VerifySignature() bool {
+	if msg.SignKey == nil {
+		return false
+	}
+
+	mac := hmac.New(sha256.New, msg.SignKey)
+	mac.Write(msg.raw[4:])
+
+	return bytes.Equal(mac.Sum(nil), msg.Records[RECORD_TLV_MAC])
+}
+
 func ParseMessage(buf []byte, includeSockaddr bool) (*Message, error) {
 	msg := NewMessage()
 	offset := 0
@@ -87,7 +100,9 @@ func ParseMessage(buf []byte, includeSockaddr bool) (*Message, error) {
 	}
 
 	msg.Type = buf[offset]
-	if err := msg.Unmarshal(buf[offset:]); err != nil {
+	msg.raw = buf[offset:]
+
+	if err := msg.Unmarshal(msg.raw); err != nil {
 		return nil, fmt.Errorf("unmarshal failed: %v", err)
 	}
 
@@ -128,9 +143,9 @@ func (msg *Message) MarshalPayload(out []byte) int {
 	}
 
 	// Add HMAC (optional)
-	if msg.signKey != nil {
+	if msg.SignKey != nil {
 		addRecord(RECORD_TLV_MAC, make([]byte, sha256.Size))
-		mac := hmac.New(sha256.New, msg.signKey)
+		mac := hmac.New(sha256.New, msg.SignKey)
 		mac.Write(out[4:i])
 		copy(out[i-sha256.Size:], mac.Sum(nil))
 	}
@@ -141,6 +156,8 @@ func (msg *Message) MarshalPayload(out []byte) int {
 	return i
 }
 
+// Decodes the packet
+// It will zero the HMAC bytes in the given slice
 func (msg *Message) Unmarshal(data []byte) (err error) {
 	msg.Type = data[0]
 
@@ -166,10 +183,20 @@ func (msg *Message) Unmarshal(data []byte) (err error) {
 			return
 		}
 
-		// Copy value and add record
-		val := make([]byte, length)
-		copy(val, data[:length])
-		msg.Records[typ] = val
+		if typ == RECORD_TLV_MAC {
+			// Add record and copy value
+			value := make([]byte, length)
+			copy(value, data[:length])
+			msg.Records[typ] = value
+
+			// Zero the source bytes to conform the HMAC function
+			for i := 0; i < int(length); i++ {
+				data[i] = 0
+			}
+		} else {
+			// Add record and reference value
+			msg.Records[typ] = data[:length]
+		}
 
 		// Strip data
 		data = data[length:]

@@ -55,7 +55,9 @@ func (srv *UDPServer) readPackets() error {
 		if err != nil {
 			fmt.Println("Error reading from UDP:", err)
 		} else {
-			srv.read(buf[:n], addr)
+			data := make([]byte, n)
+			copy(data, buf[:n])
+			srv.read(data, addr)
 		}
 	}
 }
@@ -76,7 +78,6 @@ func (srv *UDPServer) read(buf []byte, addr *net.UDPAddr) error {
 		srv.recv <- msg
 		return nil
 	}
-
 }
 
 func (srv *UDPServer) Write(msg *Message) error {

@@ -65,7 +65,9 @@ func (srv *KernelServer) readPackets() error {
 		} else if err != nil {
 			return err
 		} else {
-			if err = srv.read(buf[:n]); err != nil {
+			data := make([]byte, n)
+			copy(data, buf[:n])
+			if err = srv.read(data); err != nil {
 				log.Println(err)
 			}
 		}
