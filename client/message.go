@@ -196,6 +196,12 @@ func (msg *Message) Unmarshal(data []byte) (err error) {
 		} else {
 			// Add record and reference value
 			msg.Records[typ] = data[:length]
+
+			/*
+				if typ == RECORD_HANDSHAKE_TYPE {
+					ioutil.WriteFile(fmt.Sprintf("null-%d.dat", data[0]), msg.raw, 0644)
+				}
+			*/
 		}
 
 		// Strip data

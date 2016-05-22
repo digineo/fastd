@@ -5,7 +5,7 @@ import (
 )
 
 type Config struct {
-	serverKeys KeyPair
+	serverKeys *KeyPair
 }
 
 var config = Config{}

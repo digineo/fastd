@@ -47,22 +47,20 @@ type KeyPair struct {
 }
 
 // Generates a random keypair
-func RandomKeypair() (keys KeyPair) {
+func RandomKeypair() (keys *KeyPair) {
 	var eccSecret C.ecc_int256_t
 	if _, err := rand.Read(eccSecret[:]); err != nil {
 		panic(err)
 	}
 
 	C.ecc_25519_gf_sanitize_secret(&eccSecret, &eccSecret)
-	copy(keys.secret[:], eccSecret[:])
-	keys.derivePublic()
-
-	return
+	//log.Printf("random keypair: %x", eccSecret[:])
+	return NewKeyPair(eccSecret[:])
 }
 
 // Generates a keypair from the given secret
-func NewKeyPair(secret []byte) KeyPair {
-	keys := KeyPair{}
+func NewKeyPair(secret []byte) *KeyPair {
+	keys := &KeyPair{}
 	copy(keys.secret[:], secret)
 	keys.derivePublic()
 	return keys
@@ -102,7 +100,7 @@ func unpackKey(key []byte) *C.ecc_25519_work_t {
 
 func (peer *Peer) makeSharedHandshakeKey() bool {
 
-	A := peer.publicKey
+	A := peer.PublicKey
 	B := config.serverKeys.public[:]
 	X := peer.peerHandshakeKey
 	Y := peer.ourHandshakeKey.public[:]
@@ -123,7 +121,7 @@ func (peer *Peer) makeSharedHandshakeKey() bool {
 	e[15] |= 0x80
 
 	workXY := unpackKey(peer.peerHandshakeKey)
-	eccPeerKey := unpackKey(peer.publicKey)
+	eccPeerKey := unpackKey(peer.PublicKey)
 	var work C.ecc_25519_work_t
 	var eb, eccServerKeySecret, eccHandshakeKeySecret, eccSigma C.ecc_int256_t
 

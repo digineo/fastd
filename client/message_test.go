@@ -7,6 +7,13 @@ import (
 	"testing"
 )
 
+var (
+	// Keys for the captured testdata
+	testServerSecret = NewKeyPair(MustDecodeString("800e8ff23adcc5df5f6b911581667821ebecf1ecd95b10b6b5f92f4ebef7704c"))
+	testHandshakeKey = NewKeyPair(MustDecodeString("88d9c3ddcfb2273fcdd90871c2d045b2e6ebf492c587efca9c951a843ca67c78"))
+	testSharedKey    = MustDecodeString("08d845c98084f16cb9d21f6a2d5c270de008ed6faa0f81fa0071360296e227f2")
+)
+
 func TestParseRequest(t *testing.T) {
 	assert := assert.New(t)
 	bytes := readTestdata("null-request.dat")
@@ -26,13 +33,13 @@ func TestParseRequest(t *testing.T) {
 	assert.Equal("ec25519-fhmqvc", string(msg.Records[RECORD_PROTOCOL_NAME]))
 
 	// Recipient Key
-	assert.Equal("346a11a8bd8fcedfcde2e19c996b6e4497d0dafc3f5af7096c915bd0f9fe4fe9", hex.EncodeToString(msg.Records[RECORD_RECIPIENT_KEY]))
+	assert.Equal(hex.EncodeToString(testServerSecret.public[:]), hex.EncodeToString(msg.Records[RECORD_RECIPIENT_KEY]))
 
 	// Sender Key
 	assert.Equal("83369beddca777585167520fb54a7fb059102bf4e0a46dd5fb1c633d83db77a2", hex.EncodeToString(msg.Records[RECORD_SENDER_KEY]))
 
 	// Sender Handshake Key
-	assert.Equal("7a3f787a77899215b21b932714f32dab8735f844036eafa4ab67e981c6df65fa", hex.EncodeToString(msg.Records[RECORD_SENDER_HANDSHAKE_KEY]))
+	assert.Equal("2d25af50e5beab86fa0014caa5a06a32afca1f3467499c5dbdc252e74d95ee90", hex.EncodeToString(msg.Records[RECORD_SENDER_HANDSHAKE_KEY]))
 
 	// Marshaling
 	assert.Equal(len(bytes), len(msg.Marshal(true)))
@@ -60,20 +67,8 @@ func TestVerifySignature(t *testing.T) {
 	assert.False(msg.VerifySignature())
 
 	// Valid signing key
-	msg.SignKey = MustDecodeString("1def4def54cfccdc536fc741306a3fbe78ae61a591bc7d7978f96329832bd22d")
+	msg.SignKey = testSharedKey
 	assert.True(msg.VerifySignature())
-}
-
-func TestHandleMessage(t *testing.T) {
-	assert := assert.New(t)
-	bytes := readTestdata("null-request.dat")
-
-	msg, err := ParseMessage(bytes, true)
-	assert.Nil(err)
-	assert.NotNil(msg)
-
-	resp := handlePacket(msg)
-	assert.NotNil(resp)
 }
 
 func readTestdata(name string) []byte {
@@ -82,4 +77,12 @@ func readTestdata(name string) []byte {
 		panic(err)
 	}
 	return bytes
+}
+
+func readTestmsg(name string) *Message {
+	msg, err := ParseMessage(readTestdata(name), true)
+	if err != nil {
+		panic(err)
+	}
+	return msg
 }

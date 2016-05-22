@@ -46,12 +46,16 @@ func main() {
 		flags.UintVar(&listenPort, "port", 10000, "Listening port")
 		flags.Parse(os.Args[2:])
 
+		// Initialize secret key
 		if secret == "" {
 			println("secret key missing\n")
 			flags.PrintDefaults()
 			os.Exit(1)
 		}
 		config.SetServerKey(secret)
+
+		// Initialize other stuff
+		InitPeers()
 
 		// Get implementation
 		impl := implementations[implName]
