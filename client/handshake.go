@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"log"
 )
 
@@ -45,19 +46,38 @@ func respondHandshake(msg *Message) (reply *Message) {
 		reply.SetError(REPLY_RECORD_MISSING, RECORD_RECIPIENT_KEY)
 		return
 	}
+	if !bytes.Equal(recipientKey, config.serverKeys.public[:]) {
+		log.Println("recipient key invalid")
+		reply.SetError(REPLY_UNACCEPTABLE_VALUE, RECORD_RECIPIENT_KEY)
+		return
+	}
 	if senderHandshakeKey == nil {
 		log.Println("sender handshake key missing")
 		reply.SetError(REPLY_RECORD_MISSING, RECORD_SENDER_HANDSHAKE_KEY)
 		return
 	}
 
-	// TODO check recipientKey
+	handshakeKey := RandomKeypair()
+
+	peer := &Peer{
+		publicKey:        senderKey,
+		peerHandshakeKey: senderHandshakeKey,
+		ourHandshakeKey:  &handshakeKey,
+	}
+
+	if !peer.makeSharedHandshakeKey() {
+		log.Println("unable to make shared handshake key")
+		return nil
+	}
+
 	// TODO check timeout
+	reply.signKey = peer.sharedKey
 	reply.Records[RECORD_REPLY_CODE] = []byte{REPLY_SUCCESS}
 	reply.Records[RECORD_METHOD_LIST] = []byte("null")
 	reply.Records[RECORD_VERSION_NAME] = []byte("v18")
 	reply.Records[RECORD_MTU] = records[RECORD_MTU]
 	reply.Records[RECORD_SENDER_KEY] = recipientKey
+	reply.Records[RECORD_SENDER_HANDSHAKE_KEY] = peer.ourHandshakeKey.public[:]
 	reply.Records[RECORD_RECIPIENT_KEY] = senderKey
 	reply.Records[RECORD_RECIPIENT_HANDSHAKE_KEY] = senderHandshakeKey
 

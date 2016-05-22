@@ -35,10 +35,10 @@ func TestParseMessage(t *testing.T) {
 	assert.Equal("bbc1151719782317d29ebfb337a7d44d034aff46c1ae930573d398eee8c8efe0", hex.EncodeToString(msg.Records[RECORD_SENDER_HANDSHAKE_KEY]))
 
 	// Marshaling
-	assert.Equal(len(bytes), len(msg.Marshal(nil, true)))
+	assert.Equal(len(bytes), len(msg.Marshal(true)))
 
 	// Parse marshaled message
-	msg2, err := ParseMessage(msg.Marshal(nil, true), true)
+	msg2, err := ParseMessage(msg.Marshal(true), true)
 	assert.Nil(err)
 	assert.NotNil(msg2)
 	//assert.EqualValues(msg.Marshal(), msg2.Marshal())

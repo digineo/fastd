@@ -87,7 +87,7 @@ func (srv *KernelServer) read(buf []byte) error {
 }
 
 func (srv *KernelServer) Write(msg *Message) error {
-	bytes := msg.Marshal(nil, true)
+	bytes := msg.Marshal(true)
 	i, err := srv.dev.Write(bytes)
 	log.Println("send:", bytes)
 	log.Println("written:", i, err)

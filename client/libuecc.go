@@ -100,12 +100,12 @@ func unpackKey(key []byte) *C.ecc_25519_work_t {
 	return &unpacked
 }
 
-func makeSharedHandshakeKey(peer *Peer) bool {
+func (peer *Peer) makeSharedHandshakeKey() bool {
 
 	A := peer.publicKey
 	B := config.serverKeys.public[:]
 	X := peer.peerHandshakeKey
-	Y := peer.handshakeKey.public[:]
+	Y := peer.ourHandshakeKey.public[:]
 
 	hash := sha256.New()
 	hash.Write(Y)
@@ -128,7 +128,7 @@ func makeSharedHandshakeKey(peer *Peer) bool {
 	var eb, eccServerKeySecret, eccHandshakeKeySecret, eccSigma C.ecc_int256_t
 
 	copy(eccServerKeySecret[:], config.serverKeys.secret[:])
-	copy(eccHandshakeKeySecret[:], peer.handshakeKey.secret[:])
+	copy(eccHandshakeKeySecret[:], peer.ourHandshakeKey.secret[:])
 
 	C.ecc_25519_gf_mult(&eb, &e, &eccServerKeySecret)
 	C.ecc_25519_gf_add(&s, &eb, &eccHandshakeKeySecret)

@@ -80,7 +80,7 @@ func (srv *UDPServer) read(buf []byte, addr *net.UDPAddr) error {
 }
 
 func (srv *UDPServer) Write(msg *Message) error {
-	bytes := msg.Marshal(nil, false)
+	bytes := msg.Marshal(false)
 	addr := net.UDPAddr{
 		Port: int(msg.Dst.Port),
 		IP:   msg.Dst.IP,

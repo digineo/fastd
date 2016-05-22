@@ -34,10 +34,10 @@ func TestMakeSharedHandshakeKey(t *testing.T) {
 	peer := &Peer{
 		publicKey:        MustDecodeString("83369beddca777585167520fb54a7fb059102bf4e0a46dd5fb1c633d83db77a2"),
 		peerHandshakeKey: MustDecodeString("b4dbdb0c05dd28204534fa27c5afca4dcda5397d833e3064f7a7281b249dc7c7"),
-		handshakeKey:     &handshakeKey,
+		ourHandshakeKey:  &handshakeKey,
 	}
 
-	assert.True(makeSharedHandshakeKey(peer))
+	assert.True(peer.makeSharedHandshakeKey())
 	assert.Equal("98a840f7d3845024b6cae090d86eeb72e2607a84ce8ee6ac25639d27e9696596", hex.EncodeToString(peer.sharedKey))
 }
 

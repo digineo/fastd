@@ -1,7 +1,6 @@
 package main
 
 import (
-	"C"
 	"bytes"
 	"crypto/hmac"
 	"crypto/sha256"
@@ -43,6 +42,7 @@ type Message struct {
 	Dst     *Sockaddr
 	Type    byte
 	Records Records
+	signKey []byte
 }
 
 func NewMessage() *Message {
@@ -54,9 +54,10 @@ func NewMessage() *Message {
 // Creates a reply to the message
 func (msg *Message) NewReply() *Message {
 	reply := NewMessage()
-	reply.Type = msg.Type + 1
+	reply.Type = 0x01
 	reply.Src = msg.Dst
 	reply.Dst = msg.Src
+	reply.Records[RECORD_HANDSHAKE_TYPE] = []byte{msg.Records[RECORD_HANDSHAKE_TYPE][0] + 1}
 	reply.Records[RECORD_MODE] = msg.Records[RECORD_MODE]
 	reply.Records[RECORD_PROTOCOL_NAME] = msg.Records[RECORD_PROTOCOL_NAME]
 	return reply
@@ -94,7 +95,7 @@ func ParseMessage(buf []byte, includeSockaddr bool) (*Message, error) {
 }
 
 // Serialize message and optionally add the HMAC
-func (msg *Message) Marshal(signKey []byte, includeSockaddr bool) []byte {
+func (msg *Message) Marshal(includeSockaddr bool) []byte {
 	bytes := make([]byte, 1500)
 	offset := 0
 
@@ -104,11 +105,11 @@ func (msg *Message) Marshal(signKey []byte, includeSockaddr bool) []byte {
 		offset = 36
 	}
 
-	n := msg.MarshalPayload(bytes[offset:], signKey)
+	n := msg.MarshalPayload(bytes[offset:])
 	return bytes[:offset+n]
 }
 
-func (msg *Message) MarshalPayload(out []byte, signKey []byte) int {
+func (msg *Message) MarshalPayload(out []byte) int {
 	// Header
 	out[0] = msg.Type
 	i := 4
@@ -127,10 +128,11 @@ func (msg *Message) MarshalPayload(out []byte, signKey []byte) int {
 	}
 
 	// Add HMAC (optional)
-	if signKey != nil {
-		mac := hmac.New(sha256.New, signKey)
-		mac.Write(out[40:i])
-		addRecord(RECORD_TLV_MAC, mac.Sum(nil))
+	if msg.signKey != nil {
+		addRecord(RECORD_TLV_MAC, make([]byte, sha256.Size))
+		mac := hmac.New(sha256.New, msg.signKey)
+		mac.Write(out[4:i])
+		copy(out[i-sha256.Size:], mac.Sum(nil))
 	}
 
 	// Set length
