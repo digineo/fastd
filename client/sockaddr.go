@@ -58,8 +58,12 @@ func (addr *Sockaddr) Write(out []byte) {
 	binary.LittleEndian.PutUint16(out[16:], uint16(addr.Port))
 }
 
+func (addr *Sockaddr) RawFixed() (raw [18]byte) {
+	addr.Write(raw[:])
+	return
+}
+
 func (addr *Sockaddr) Raw() []byte {
-	raw := make([]byte, 18)
-	addr.Write(raw)
-	return raw
+	raw := addr.RawFixed()
+	return raw[:]
 }
