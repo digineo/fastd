@@ -75,14 +75,7 @@ static struct if_clone *fastd_cloner;
 static void	fastd_add_peer(struct fastd_softc *);
 static void	fastd_remove_peer(struct fastd_softc *);
 
-static int	fastd_sockaddr_cmp(const union fastd_sockaddr *,
-		    const struct sockaddr *);
-static void	fastd_sockaddr_copy(union fastd_sockaddr *,
-		    const struct sockaddr *);
-static int	fastd_sockaddr_in_equal(const union fastd_sockaddr *,
-		    const struct sockaddr *);
-static void	fastd_sockaddr_in_copy(union fastd_sockaddr *,
-		    const struct sockaddr *);
+static int	fastd_sockaddr_equal(const union fastd_sockaddr *, const union fastd_sockaddr *);
 
 static int	fastd_ctrl_get_config(struct fastd_softc *, void *);
 static int	fastd_ctrl_set_remote(struct fastd_softc *, void *);
@@ -216,7 +209,7 @@ fastd_remove_peer(struct fastd_softc *sc)
 	struct fastd_softc *entry;
 	// Remove from flows
 	LIST_FOREACH(entry, &fastd_peers[FASTD_HASH(sc)], fastd_flow_entry) {
-		if (entry->remote.in4.sin_port == sc->remote.in4.sin_port) {
+		if (fastd_sockaddr_equal(&entry->remote, &sc->remote)) {
 			LIST_REMOVE(entry, fastd_flow_entry);
 			break;
 		}
@@ -234,69 +227,28 @@ fastd_add_peer(struct fastd_softc *sc)
 
 
 static int
-fastd_sockaddr_cmp(const union fastd_sockaddr *fastdaddr,
-    const struct sockaddr *sa)
+fastd_sockaddr_equal(const union fastd_sockaddr *a, const union fastd_sockaddr *b)
 {
+	if (a->sa.sa_family != b->sa.sa_family)
+		return 0;
 
-	return (bcmp(&fastdaddr->sa, sa, fastdaddr->sa.sa_len));
-}
+	switch (a->sa.sa_family) {
+		case AF_INET:
+			return (
+				a->in4.sin_addr.s_addr == b->in4.sin_addr.s_addr &&
+			  a->in4.sin_port == b->in4.sin_port
+			);
+		case AF_INET6:
+			return (
+				IN6_ARE_ADDR_EQUAL (&a->in6.sin6_addr, &b->in6.sin6_addr) &&
+			  (a->in6.sin6_port == b->in6.sin6_port) &&
+			  (a->in6.sin6_scope_id == 0 || b->in6.sin6_scope_id == 0 || (a->in6.sin6_scope_id == b->in6.sin6_scope_id))
+			);
 
-static void
-fastd_sockaddr_copy(union fastd_sockaddr *fastdaddr,
-    const struct sockaddr *sa)
-{
-
-	MPASS(sa->sa_family == AF_INET || sa->sa_family == AF_INET6);
-	bzero(fastdaddr, sizeof(*fastdaddr));
-
-	if (sa->sa_family == AF_INET) {
-		fastdaddr->in4 = *satoconstsin(sa);
-		fastdaddr->in4.sin_len = sizeof(struct sockaddr_in);
-	} else if (sa->sa_family == AF_INET6) {
-		fastdaddr->in6 = *satoconstsin6(sa);
-		fastdaddr->in6.sin6_len = sizeof(struct sockaddr_in6);
+		default:
+			return 1;
 	}
 }
-
-static int
-fastd_sockaddr_in_equal(const union fastd_sockaddr *fastdaddr,
-    const struct sockaddr *sa)
-{
-	int equal;
-
-	if (sa->sa_family == AF_INET) {
-		const struct in_addr *in4 = &satoconstsin(sa)->sin_addr;
-		equal = in4->s_addr == fastdaddr->in4.sin_addr.s_addr;
-	} else if (sa->sa_family == AF_INET6) {
-		const struct in6_addr *in6 = &satoconstsin6(sa)->sin6_addr;
-		equal = IN6_ARE_ADDR_EQUAL(in6, &fastdaddr->in6.sin6_addr);
-	} else
-		equal = 0;
-
-	return (equal);
-}
-
-static void
-fastd_sockaddr_in_copy(union fastd_sockaddr *fastdaddr,
-    const struct sockaddr *sa)
-{
-
-	MPASS(sa->sa_family == AF_INET || sa->sa_family == AF_INET6);
-
-	if (sa->sa_family == AF_INET) {
-		const struct in_addr *in4 = &satoconstsin(sa)->sin_addr;
-		fastdaddr->in4.sin_family = AF_INET;
-		fastdaddr->in4.sin_len = sizeof(struct sockaddr_in);
-		fastdaddr->in4.sin_addr = *in4;
-	} else if (sa->sa_family == AF_INET6) {
-		const struct in6_addr *in6 = &satoconstsin6(sa)->sin6_addr;
-		fastdaddr->in6.sin6_family = AF_INET6;
-		fastdaddr->in6.sin6_len = sizeof(struct sockaddr_in6);
-		fastdaddr->in6.sin6_addr = *in6;
-	}
-}
-
-
 
 static int
 fastd_ctrl_get_config(struct fastd_softc *sc, void *arg)

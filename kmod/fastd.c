@@ -151,7 +151,7 @@ isIPv4(const struct fastd_inaddr *inaddr){
   );
 }
 
-// Converts a fastd_inaddr into a fixed length fastd_sockaddr
+// Copies a fastd_inaddr into a fixed length fastd_sockaddr
 void
 sock_to_inet(struct fastd_inaddr *dst, const union fastd_sockaddr *src){
   switch (src->sa.sa_family) {
@@ -170,7 +170,7 @@ sock_to_inet(struct fastd_inaddr *dst, const union fastd_sockaddr *src){
   }
 }
 
-// Converts a fastd_sockaddr into fastd_inaddr
+// Copies a fastd_sockaddr into fastd_inaddr
 void
 inet_to_sock(union fastd_sockaddr *dst, const struct fastd_inaddr *src){
   if (isIPv4(src)){
