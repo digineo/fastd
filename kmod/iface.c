@@ -41,7 +41,8 @@ struct fastd_softc {
 
 #define FASTD_HASH_SHIFT	6
 #define FASTD_HASH_SIZE		(1 << FASTD_HASH_SHIFT)
-#define FASTD_HASH(_sc)	((_sc)->remote.in4.sin_port % FASTD_HASH_SIZE)
+#define FASTD_HASH_ADDR(_sa)	((_sa)->in4.sin_port % FASTD_HASH_SIZE)
+#define FASTD_HASH(_sc)		((_sc)->remote.in4.sin_port % FASTD_HASH_SIZE)
 
 // Mapping from sources addresses to interfaces
 LIST_HEAD(fastd_softc_head, fastd_softc);
@@ -62,7 +63,9 @@ static struct if_clone *fastd_cloner;
 
 static void	fastd_add_peer(struct fastd_softc *);
 static void	fastd_remove_peer(struct fastd_softc *);
+static struct fastd_softc* fastd_lookup_peer(const union fastd_sockaddr *);
 
+static void	fastd_sockaddr_copy(union fastd_sockaddr *, const union fastd_sockaddr *);
 static int	fastd_sockaddr_equal(const union fastd_sockaddr *, const union fastd_sockaddr *);
 
 static int	fastd_ctrl_get_config(struct fastd_softc *, void *);
@@ -204,6 +207,19 @@ fastd_remove_peer(struct fastd_softc *sc)
 	}
 }
 
+static struct fastd_softc*
+fastd_lookup_peer(const union fastd_sockaddr *addr)
+{
+	struct fastd_softc *entry;
+	LIST_FOREACH(entry, &fastd_peers[FASTD_HASH_ADDR(addr)], fastd_flow_entry) {
+		if (fastd_sockaddr_equal(&entry->remote, addr)) {
+			return entry;
+		}
+	}
+
+	return NULL;
+}
+
 static void
 fastd_add_peer(struct fastd_softc *sc)
 {
@@ -214,6 +230,27 @@ fastd_add_peer(struct fastd_softc *sc)
 }
 
 
+// copy fastd_sockaddr to fastd_sockaddr
+static void
+fastd_sockaddr_copy(union fastd_sockaddr *dst, const union fastd_sockaddr *src)
+{
+	bzero(dst, sizeof(*dst));
+
+	switch (src->sa.sa_family) {
+	case AF_INET:
+		dst->in4 = *satoconstsin(src);
+		dst->in4.sin_len = sizeof(struct sockaddr_in);
+		break;
+	case AF_INET6:
+		dst->in6 = *satoconstsin6(src);
+		dst->in6.sin6_len = sizeof(struct sockaddr_in6);
+		break;
+	}
+}
+
+
+
+// compares fastd_sockaddr with another fastd_sockaddr
 static int
 fastd_sockaddr_equal(const union fastd_sockaddr *a, const union fastd_sockaddr *b)
 {
@@ -221,20 +258,19 @@ fastd_sockaddr_equal(const union fastd_sockaddr *a, const union fastd_sockaddr *
 		return 0;
 
 	switch (a->sa.sa_family) {
-		case AF_INET:
-			return (
-				a->in4.sin_addr.s_addr == b->in4.sin_addr.s_addr &&
-			  a->in4.sin_port == b->in4.sin_port
-			);
-		case AF_INET6:
-			return (
-				IN6_ARE_ADDR_EQUAL (&a->in6.sin6_addr, &b->in6.sin6_addr) &&
-			  (a->in6.sin6_port == b->in6.sin6_port) &&
-			  (a->in6.sin6_scope_id == 0 || b->in6.sin6_scope_id == 0 || (a->in6.sin6_scope_id == b->in6.sin6_scope_id))
-			);
-
-		default:
-			return 1;
+	case AF_INET:
+		return (
+			a->in4.sin_addr.s_addr == b->in4.sin_addr.s_addr &&
+		  a->in4.sin_port == b->in4.sin_port
+		);
+	case AF_INET6:
+		return (
+			IN6_ARE_ADDR_EQUAL (&a->in6.sin6_addr, &b->in6.sin6_addr) &&
+		  (a->in6.sin6_port == b->in6.sin6_port) &&
+		  (a->in6.sin6_scope_id == 0 || b->in6.sin6_scope_id == 0 || (a->in6.sin6_scope_id == b->in6.sin6_scope_id))
+		);
+	default:
+		return 1;
 	}
 }
 
@@ -258,14 +294,26 @@ static int
 fastd_ctrl_set_remote(struct fastd_softc *sc, void *arg)
 {
 	struct iffastdcfg *cfg = arg;
+	struct fastd_softc *other;
+	union fastd_sockaddr sa;
 	int error = 0;
+	inet_to_sock(&sa, &cfg->remote);
 
 	rm_wlock(&fastd_lock);
-	fastd_remove_peer(sc);
-	inet_to_sock(&sc->remote, &cfg->remote);
-	fastd_add_peer(sc);
-	rm_wunlock(&fastd_lock);
 
+	// address and port already taken?
+	other = fastd_lookup_peer(&sa);
+	if (other != NULL && other != sc) {
+		error = EADDRNOTAVAIL;
+		goto out;
+	}
+
+	// reconfigure
+	fastd_remove_peer(sc);
+	fastd_sockaddr_copy(&sc->remote, &sa);
+	fastd_add_peer(sc);
+out:
+	rm_wunlock(&fastd_lock);
 	return (error);
 }
 
