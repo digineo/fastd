@@ -2,24 +2,15 @@
 #include <sys/priv.h>
 #include <sys/proc.h>
 #include <sys/systm.h>
-#include <sys/jail.h>
 #include <sys/mbuf.h>
-#include <sys/module.h>
 #include <sys/socket.h>
-#include <sys/fcntl.h>
-#include <sys/filio.h>
 #include <sys/sockio.h>
-#include <sys/ttycom.h>
-#include <sys/poll.h>
-#include <sys/selinfo.h>
-#include <sys/signalvar.h>
-#include <sys/filedesc.h>
-#include <sys/kernel.h>
 #include <sys/sysctl.h>
 #include <sys/conf.h>
-#include <sys/uio.h>
 #include <sys/malloc.h>
 #include <sys/hash.h>
+#include <sys/lock.h>
+#include <sys/rmlock.h>
 
 #include <net/if.h>
 #include <net/if_var.h>
@@ -31,15 +22,12 @@
 #include <netinet/in.h>
 #include <netinet6/in6_var.h>
 
-#include <sys/queue.h>
-#include <sys/condvar.h>
-
 #include "fastd.h"
 #include "iface.h"
 
 
 struct fastd_softc {
-	// lists are protected by global fastdmtx
+	// lists are protected by global fastd_lock
 	TAILQ_ENTRY(fastd_softc) fastd_list; // list of all interfaces
 	LIST_ENTRY(fastd_softc) fastd_flow_entry; // entry in flow table
 
@@ -59,7 +47,7 @@ struct fastd_softc {
 LIST_HEAD(fastd_softc_head, fastd_softc);
 struct fastd_softc_head fastd_peers[FASTD_HASH_SIZE];
 
-static struct mtx fastdmtx;
+static struct rmlock fastd_lock;
 static const char fastdname[] = "fastd";
 
 // List of all interfaces
@@ -113,7 +101,7 @@ fastd_iface_load()
 		LIST_INIT(&fastd_peers[i]);
 	}
 
-	mtx_init(&fastdmtx, "fastdmtx", NULL, MTX_DEF);
+	rm_init(&fastd_lock, "fastd_lock");
 	fastd_cloner = if_clone_simple(fastdname, fastd_clone_create, fastd_clone_destroy, 0);
 }
 
@@ -125,12 +113,12 @@ fastd_iface_unload()
 
 	if_clone_detach(fastd_cloner);
 
-	mtx_lock(&fastdmtx);
+	rm_wlock(&fastd_lock);
 	while ((sc = TAILQ_FIRST(&fastdhead)) != NULL) {
 		fastd_destroy(sc);
 	}
-	mtx_unlock(&fastdmtx);
-	mtx_destroy(&fastdmtx);
+	rm_wunlock(&fastd_lock);
+	rm_destroy(&fastd_lock);
 
 	for (i = 0; i < FASTD_HASH_SIZE; i++) {
 		KASSERT(LIST_EMPTY(&fastd_peers[i]), "fastd: list not empty");
@@ -168,9 +156,9 @@ fastd_clone_create(struct if_clone *ifc, int unit, caddr_t params)
 
 	if_attach(ifp);
 
-	mtx_lock(&fastdmtx);
+	rm_wlock(&fastd_lock);
 	TAILQ_INSERT_TAIL(&fastdhead, sc, fastd_list);
-	mtx_unlock(&fastdmtx);
+	rm_wunlock(&fastd_lock);
 
 	return (0);
 
@@ -186,13 +174,13 @@ fastd_clone_destroy(struct ifnet *ifp)
 	struct fastd_softc *sc;
 	sc = ifp->if_softc;
 
-	mtx_lock(&fastdmtx);
+	rm_wlock(&fastd_lock);
 	fastd_remove_peer(sc);
 	fastd_destroy(sc);
-	mtx_unlock(&fastdmtx);
+	rm_wunlock(&fastd_lock);
 }
 
-// fastdmtx must be locked before
+// fastd_lock must be locked before
 static void
 fastd_destroy(struct fastd_softc *sc)
 {
@@ -272,11 +260,11 @@ fastd_ctrl_set_remote(struct fastd_softc *sc, void *arg)
 	struct iffastdcfg *cfg = arg;
 	int error = 0;
 
-	mtx_lock(&fastdmtx);
+	rm_wlock(&fastd_lock);
 	fastd_remove_peer(sc);
 	inet_to_sock(&sc->remote, &cfg->remote);
 	fastd_add_peer(sc);
-	mtx_unlock(&fastdmtx);
+	rm_wunlock(&fastd_lock);
 
 	return (error);
 }
