@@ -15,8 +15,6 @@ MALLOC_DECLARE(M_FASTD);
 #define FASTD_MSG_BUFFER_SIZE 50
 #define FASTD_MAX_DATA_SIZE   1024
 
-extern struct buf_ring *fastd_msgbuf;
-extern struct mtx       fastd_msgmtx;
 
 // For both IPv4 and IPv6
 union fastd_sockaddr {
@@ -47,15 +45,6 @@ struct fastd_message {
 };
 
 
-int
-isIPv4(const struct fastd_inaddr *);
-
-void
-sock_to_inet(struct fastd_inaddr *, const union fastd_sockaddr *);
-
-// Converts a fastd_sockaddr into fastd_inaddr
-void
-inet_to_sock(union fastd_sockaddr *dst, const struct fastd_inaddr *src);
 
 
 #endif /* FASTD_H */
