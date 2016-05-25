@@ -66,7 +66,7 @@ func main() {
 		}
 
 		// Initialize implementation
-		srv, err := impl(net.ParseIP(listenAddr), uint16(listenPort))
+		srv, err := impl([]Sockaddr{{net.ParseIP(listenAddr), uint16(listenPort)}})
 		if err != nil {
 			panic(err)
 		}

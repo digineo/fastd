@@ -3,7 +3,7 @@ package main
 /*
 #cgo pkg-config: libuecc
 #include <unistd.h>
-#include <libuecc-7/libuecc/ecc.h>
+#include <libuecc/ecc.h>
 
 // Divides a secret key by 8
 // returns 0 on success

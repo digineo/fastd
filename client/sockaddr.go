@@ -67,3 +67,26 @@ func (addr *Sockaddr) Raw() []byte {
 	raw := addr.RawFixed()
 	return raw[:]
 }
+
+func (addr *Sockaddr) Equal(other *Sockaddr) bool {
+	return addr.Port == other.Port && addr.IP.Equal(other.IP)
+}
+
+// Returns the address family
+func (addr *Sockaddr) Family() int {
+	if len(addr.IP) == net.IPv4len || (len(addr.IP) > 11 &&
+		isZeros(addr.IP[0:10]) && addr.IP[10] == 0xff && addr.IP[11] == 0xff) {
+		return syscall.AF_INET
+	} else {
+		return syscall.AF_INET6
+	}
+}
+
+func isZeros(p net.IP) bool {
+	for _, b := range p {
+		if b != 0 {
+			return false
+		}
+	}
+	return true
+}

@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"net"
 	"os"
 	"syscall"
 	"time"
@@ -16,23 +15,14 @@ const (
 )
 
 type KernelServer struct {
-	dev  *os.File      // Interface to kernel
-	recv chan *Message // Received messages
+	dev       *os.File      // Interface to kernel
+	recv      chan *Message // Received messages
+	addresses []Sockaddr
 }
 
-func NewKernelServer(listenAddr net.IP, listenPort uint16) (Server, error) {
+func NewKernelServer(addresses []Sockaddr) (Server, error) {
 	dev, err := os.OpenFile(DevicePath, os.O_RDWR, 0644)
 	if err != nil {
-		return nil, err
-	}
-
-
-	if err = devIOCTL(dev.Fd(), ioctl_CLOSE, listenAddr, listenPort); err != nil && err != syscall.ENXIO {
-		log.Println("ioctl close failed", err)
-	}
-	if err = devIOCTL(dev.Fd(), ioctl_BIND, listenAddr, listenPort); err != nil {
-		log.Println("ioctl bind failed", err)
-		dev.Close()
 		return nil, err
 	}
 
@@ -41,18 +31,26 @@ func NewKernelServer(listenAddr net.IP, listenPort uint16) (Server, error) {
 		recv: make(chan *Message, 10),
 	}
 
+	for _, address := range addresses {
+		if err = srv.ioctl(ioctl_CLOSE, address); err != nil && err != syscall.ENXIO {
+			log.Println("ioctl close failed", err)
+		}
+		if err = srv.ioctl(ioctl_BIND, address); err != nil {
+			log.Println("ioctl bind failed", err)
+			srv.Close()
+			return nil, err
+		}
+		srv.addresses = append(srv.addresses, address)
+	}
+
 	go srv.readPackets()
 
 	return srv, nil
 }
 
-func devIOCTL(fd uintptr, cmd uintptr, ip net.IP, port uint16) error {
-	sockaddr := Sockaddr{
-		IP:   ip,
-		Port: port,
-	}
-	sa := sockaddr.RawFixed()
-	return ioctl(fd, cmd, uintptr(unsafe.Pointer(&sa)))
+func (srv *KernelServer) ioctl(cmd uintptr, addr Sockaddr) error {
+	sa := addr.RawFixed()
+	return ioctl(srv.dev.Fd(), cmd, uintptr(unsafe.Pointer(&sa)))
 }
 
 func (srv *KernelServer) Read() chan *Message {
