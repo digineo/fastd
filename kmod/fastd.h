@@ -9,23 +9,12 @@
 
 MALLOC_DECLARE(M_FASTD);
 
-#define FASTD_BIND          _IOW('F', 1, struct sockaddr_in)
-#define FASTD_CLOSE         _IO('F', 2)
-
-#define FASTD_MSG_BUFFER_SIZE 50
-#define FASTD_MAX_DATA_SIZE   1024
-
 
 // For both IPv4 and IPv6
 union fastd_sockaddr {
   struct sockaddr sa;
   struct sockaddr_in  in4;
   struct sockaddr_in6 in6;
-};
-
-struct fastd_socket {
-  struct socket        *sock;
-  union fastd_sockaddr  laddr;
 };
 
 #define FASTD_HDR_CTRL  0x01
@@ -43,6 +32,13 @@ struct fastd_message {
   struct fastd_inaddr dst;
   char                data[];
 };
+
+#define FASTD_IOCTL_LIST          _IO('F', 1)
+#define FASTD_IOCTL_BIND          _IOW('F', 2, struct fastd_inaddr)
+#define FASTD_IOCTL_CLOSE         _IOW('F', 3, struct fastd_inaddr)
+
+#define FASTD_MSG_BUFFER_SIZE 50
+#define FASTD_MAX_DATA_SIZE   1024
 
 
 

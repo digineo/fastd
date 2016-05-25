@@ -6,7 +6,9 @@ import (
 	"log"
 	"net"
 	"os"
+	"syscall"
 	"time"
+	"unsafe"
 )
 
 const (
@@ -24,13 +26,13 @@ func NewKernelServer(listenAddr net.IP, listenPort uint16) (Server, error) {
 		return nil, err
 	}
 
-	// close listening socket
-	ioctl(dev.Fd(), ioctl_CLOSE, 0)
 
-	// create new socket
-	addr := sockaddrToRaw(listenAddr, listenPort)
-	err = ioctl(dev.Fd(), ioctl_BIND, uintptr(addr))
-	if err != nil {
+	if err = devIOCTL(dev.Fd(), ioctl_CLOSE, listenAddr, listenPort); err != nil && err != syscall.ENXIO {
+		log.Println("ioctl close failed", err)
+	}
+	if err = devIOCTL(dev.Fd(), ioctl_BIND, listenAddr, listenPort); err != nil {
+		log.Println("ioctl bind failed", err)
+		dev.Close()
 		return nil, err
 	}
 
@@ -42,6 +44,15 @@ func NewKernelServer(listenAddr net.IP, listenPort uint16) (Server, error) {
 	go srv.readPackets()
 
 	return srv, nil
+}
+
+func devIOCTL(fd uintptr, cmd uintptr, ip net.IP, port uint16) error {
+	sockaddr := Sockaddr{
+		IP:   ip,
+		Port: port,
+	}
+	sa := sockaddr.RawFixed()
+	return ioctl(fd, cmd, uintptr(unsafe.Pointer(&sa)))
 }
 
 func (srv *KernelServer) Read() chan *Message {

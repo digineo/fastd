@@ -16,8 +16,9 @@ import (
 )
 
 var (
-	ioctl_BIND         = _IOW('F', 1, unsafe.Sizeof(syscall.RawSockaddr{}))
-	ioctl_CLOSE        = _IO('F', 2)
+	ioctl_LIST         = _IO('F', 1)
+	ioctl_BIND         = _IOW('F', 2, 18)
+	ioctl_CLOSE        = _IOW('F', 3, 18)
 	ioctl_SET_DRV_SPEC = _IOW('i', 123, unsafe.Sizeof(C.struct_ifdrv{}))
 	ioctl_GET_DRV_SPEC = _IOWR('i', 123, unsafe.Sizeof(C.struct_ifdrv{}))
 

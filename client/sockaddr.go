@@ -55,7 +55,7 @@ func parseSockaddr(buf []byte) *Sockaddr {
 
 func (addr *Sockaddr) Write(out []byte) {
 	copy(out, addr.IP.To16())
-	binary.LittleEndian.PutUint16(out[16:], uint16(addr.Port))
+	binary.BigEndian.PutUint16(out[16:], uint16(addr.Port))
 }
 
 func (addr *Sockaddr) RawFixed() (raw [18]byte) {

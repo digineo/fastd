@@ -88,39 +88,56 @@ static struct cdevsw fastd_cdevsw = {
 	.d_name =	"fastd"
 };
 
-
 static struct cdev *fastd_dev;
 static struct buf_ring *fastd_msgbuf;
 static struct mtx       fastd_msgmtx;
 
-static int fastd_create_socket(void);
-static int fastd_bind_socket(union fastd_sockaddr* laddr);
-static void fastd_destroy_socket(void);
-static int fastd_send_packet(struct uio *uio);
+
+// ------------------------------------
+// Kernel Sockets
+
+struct fastd_socket {
+  LIST_ENTRY(fastd_socket) list;
+  struct socket        *socket;
+  union fastd_sockaddr  laddr;
+};
+
+// Head of all kernel sockets
+static LIST_HEAD(,fastd_socket) fastd_sockets_head = LIST_HEAD_INITIALIZER(fastd_socket);
 
 
-
+// ------------------------------------
+// Network Interfaces
 
 struct fastd_softc {
   // lists are protected by global fastd_lock
-  TAILQ_ENTRY(fastd_softc) fastd_list; // list of all interfaces
+  LIST_ENTRY(fastd_softc) fastd_ifaces; // list of all interfaces
   LIST_ENTRY(fastd_softc) fastd_flow_entry; // entry in flow table
 
   struct ifnet *fastd_ifp;  /* the interface */
   union fastd_sockaddr remote;  /* remote ip address and port */
 };
 
-
+// Head of all interfaces
+static LIST_HEAD(,fastd_softc) fastd_ifaces_head = LIST_HEAD_INITIALIZER(fastd_softc);
 
 // Mapping from sources addresses to interfaces
 LIST_HEAD(fastd_softc_head, fastd_softc);
 struct fastd_softc_head fastd_peers[FASTD_HASH_SIZE];
 
+
+
+static int fastd_bind_socket(union fastd_sockaddr*);
+static int fastd_close_socket(union fastd_sockaddr*);
+static void fastd_close_sockets();
+static struct fastd_socket* fastd_find_socket(union fastd_sockaddr*);
+static int fastd_send_packet(struct uio *uio);
+
+static void fastd_rcv_udp_packet(struct mbuf *, int, struct inpcb *, const struct sockaddr *, void *);
+
+
 static struct rmlock fastd_lock;
 static const char fastdname[] = "fastd";
-
-// List of all interfaces
-static TAILQ_HEAD(,fastd_softc) fastdhead = TAILQ_HEAD_INITIALIZER(fastdhead);
 
 static int  fastd_clone_create(struct if_clone *, int, caddr_t);
 static void fastd_clone_destroy(struct ifnet *);
@@ -148,113 +165,6 @@ struct fastd_control {
 };
 
 
-
-// ------------------------------------------------------------------
-// Functions for control device
-// ------------------------------------------------------------------
-
-
-static int
-fastd_write(struct cdev *dev, struct uio *uio, int ioflag)
-{
-	int error = 0;
-	if (uio->uio_iov->iov_len < sizeof(struct fastd_message) - sizeof(uint16_t)){
-		uprintf("message too short.\n");
-		error = EINVAL;
-		return (error);
-	}
-
-	error = fastd_send_packet(uio);
-
-	return (error);
-}
-
-static int
-fastd_read(struct cdev *dev, struct uio *uio, int ioflag)
-{
-	int error = 0;
-	struct fastd_message *msg;
-	size_t tomove;
-
-	// dequeue next message
-	msg = buf_ring_dequeue_mc(fastd_msgbuf);
-
-	if (msg != NULL) {
-		// move message to device
-		tomove = MIN(uio->uio_resid, sizeof(struct fastd_message) - sizeof(uint16_t) + msg->datalen);
-		error  = uiomove((char *)msg + sizeof(uint16_t), tomove, uio);
-		free(msg, M_FASTD);
-	}
-
-	if (error != 0)
-		uprintf("Read failed.\n");
-
-	return (error);
-}
-
-static int
-fastd_modevent(module_t mod __unused, int event, void *arg __unused)
-{
-	int error = 0;
-
-	switch (event) {
-	case MOD_LOAD:
-		mtx_init(&fastd_msgmtx, "fastd", NULL, MTX_SPIN);
-		fastd_msgbuf = buf_ring_alloc(FASTD_MSG_BUFFER_SIZE, M_FASTD, M_WAITOK, &fastd_msgmtx);
-		fastd_dev = make_dev(&fastd_cdevsw, 0, UID_ROOT, GID_WHEEL, 0600, "fastd");
-		fastd_create_socket();
-		fastd_iface_load();
-
-		uprintf("fastd driver loaded.\n");
-		break;
-	case MOD_UNLOAD:
-		fastd_iface_unload();
-		fastd_destroy_socket();
-		destroy_dev(fastd_dev);
-
-		// Free ringbuffer and stored items
-		struct fastd_message *msg;
-		while(1){
-			msg = buf_ring_dequeue_mc(fastd_msgbuf);
-			if (msg == NULL)
-				break;
-			free(msg, M_FASTD);
-		}
-		buf_ring_free(fastd_msgbuf, M_FASTD);
-		mtx_destroy(&fastd_msgmtx);
-
-		uprintf("fastd driver unloaded.\n");
-		break;
-	default:
-		error = EOPNOTSUPP;
-		break;
-	}
-
-	return (error);
-}
-
-static int
-fastd_ioctl(struct cdev *dev, u_long cmd, caddr_t data, int fflag, struct thread *td)
-{
-	int error = 0;
-
-	switch (cmd) {
-	case FASTD_BIND:
-		error = fastd_bind_socket((union fastd_sockaddr*)data);
-		break;
-	case FASTD_CLOSE:
-		fastd_destroy_socket();
-		break;
-	default:
-		error = ENOTTY;
-		break;
-	}
-
-	return (error);
-}
-
-
-DEV_MODULE(fastd, fastd_modevent, NULL);
 
 
 // ------------------------------------------------------------------
@@ -361,81 +271,228 @@ fastd_sockaddr_equal(const union fastd_sockaddr *a, const union fastd_sockaddr *
 
 
 // ------------------------------------------------------------------
+// Functions for control device
+// ------------------------------------------------------------------
+
+
+static int
+fastd_write(struct cdev *dev, struct uio *uio, int ioflag)
+{
+	int error = 0;
+	if (uio->uio_iov->iov_len < sizeof(struct fastd_message) - sizeof(uint16_t)){
+		uprintf("message too short.\n");
+		error = EINVAL;
+		return (error);
+	}
+
+	error = fastd_send_packet(uio);
+
+	return (error);
+}
+
+static int
+fastd_read(struct cdev *dev, struct uio *uio, int ioflag)
+{
+	int error = 0;
+	struct fastd_message *msg;
+	size_t tomove;
+
+	// dequeue next message
+	msg = buf_ring_dequeue_mc(fastd_msgbuf);
+
+	if (msg != NULL) {
+		// move message to device
+		tomove = MIN(uio->uio_resid, sizeof(struct fastd_message) - sizeof(uint16_t) + msg->datalen);
+		error  = uiomove((char *)msg + sizeof(uint16_t), tomove, uio);
+		free(msg, M_FASTD);
+	}
+
+	if (error != 0)
+		uprintf("Read failed.\n");
+
+	return (error);
+}
+
+static int
+fastd_modevent(module_t mod __unused, int event, void *arg __unused)
+{
+	int error = 0;
+
+	switch (event) {
+	case MOD_LOAD:
+		rm_init(&fastd_lock, "fastd_lock");
+		mtx_init(&fastd_msgmtx, "fastd", NULL, MTX_SPIN);
+		fastd_msgbuf = buf_ring_alloc(FASTD_MSG_BUFFER_SIZE, M_FASTD, M_WAITOK, &fastd_msgmtx);
+		fastd_dev = make_dev(&fastd_cdevsw, 0, UID_ROOT, GID_WHEEL, 0600, "fastd");
+		fastd_iface_load();
+
+		uprintf("fastd driver loaded.\n");
+		break;
+	case MOD_UNLOAD:
+		fastd_iface_unload();
+		fastd_close_sockets();
+		destroy_dev(fastd_dev);
+
+		// Free ringbuffer and stored items
+		struct fastd_message *msg;
+		while(1){
+			msg = buf_ring_dequeue_mc(fastd_msgbuf);
+			if (msg == NULL)
+				break;
+			free(msg, M_FASTD);
+		}
+		buf_ring_free(fastd_msgbuf, M_FASTD);
+		mtx_destroy(&fastd_msgmtx);
+		rm_destroy(&fastd_lock);
+
+		uprintf("fastd driver unloaded.\n");
+		break;
+	default:
+		error = EOPNOTSUPP;
+		break;
+	}
+
+	return (error);
+}
+
+static int
+fastd_ioctl(struct cdev *dev, u_long cmd, caddr_t data, int fflag, struct thread *td)
+{
+	int error;
+	union fastd_sockaddr sa;
+
+	switch (cmd) {
+	case FASTD_IOCTL_BIND:
+		inet_to_sock(&sa, (struct fastd_inaddr*)data);
+		error = fastd_bind_socket(&sa);
+		break;
+	case FASTD_IOCTL_CLOSE:
+		inet_to_sock(&sa, (struct fastd_inaddr*)data);
+		error = fastd_close_socket(&sa);
+		break;
+	default:
+		error = ENOTTY;
+		break;
+	}
+
+	return (error);
+}
+
+
+DEV_MODULE(fastd, fastd_modevent, NULL);
+
+
+// ------------------------------------------------------------------
 // Network functions
 // ------------------------------------------------------------------
 
 
 
-
-static struct fastd_socket fastd_sock;
-static void fastd_rcv_udp_packet(struct mbuf *, int, struct inpcb *, const struct sockaddr *, void *);
-
-
 static int
-fastd_create_socket(){
-  int error;
+fastd_bind_socket(union fastd_sockaddr *sa){
+	int error;
+	struct fastd_socket *sock;
 
-  uprintf("create socket\n");
-  error = socreate(PF_INET, &fastd_sock.sock, SOCK_DGRAM, IPPROTO_UDP, curthread->td_ucred, curthread);
+	sock = malloc(sizeof(*sock), M_FASTD, M_WAITOK | M_ZERO);
+	fastd_sockaddr_copy(&sock->laddr, sa);
 
-  if (error) {
-    uprintf("cannot create socket: %d\n", error);
-  }
+	error = socreate(sock->laddr.sa.sa_family, &sock->socket, SOCK_DGRAM, IPPROTO_UDP, curthread->td_ucred, curthread);
+
+	if (error) {
+		goto out;
+	}
+
+	error = sobind(sock->socket, &sa->sa, curthread);
+
+	if (error){
+		uprintf("can not bind to socket: %d\n", error);
+		goto fail;
+	}
+
+	error = udp_set_kernel_tunneling(sock->socket, fastd_rcv_udp_packet, &sock);
+
+	if (error) {
+		uprintf("can not set tunneling function: %d\n", error);
+		goto fail;
+	}
+
+	rm_wlock(&fastd_lock);
+	LIST_INSERT_HEAD(&fastd_sockets_head, sock, list);
+	rm_wunlock(&fastd_lock);
+
+	goto out;
+
+fail:
+	soclose(sock->socket);
+out:
+	if (error){
+		free(sock, M_FASTD);
+	}
   return (error);
 }
 
+
+// Closes a socket
 static int
-fastd_bind_socket(union fastd_sockaddr *laddr){
-  int error;
+fastd_close_socket(union fastd_sockaddr *sa){
+	int error = ENXIO;
+	struct fastd_socket *sock;
 
-  if (fastd_sock.sock == NULL){
-    error = fastd_create_socket();
-    if (error) {
-      goto out;
-    }
-  }
+  rm_wlock(&fastd_lock);
 
-  // Copy listen address
-  fastd_sock.laddr = *laddr;
+	LIST_FOREACH(sock, &fastd_sockets_head, list) {
+		if (fastd_sockaddr_equal(sa, &sock->laddr)) {
+			soclose(sock->socket);
+			free(sock, M_FASTD);
+			LIST_REMOVE(sock, list);
+			error = 0;
+			break;
+		}
+	}
 
-  if (laddr->sa.sa_family == AF_INET) {
-    uprintf("binding ipv4 socket, port=%u addr=%08X\n", ntohs(laddr->in4.sin_port), laddr->in4.sin_addr.s_addr);
-  } else if (laddr->sa.sa_family == AF_INET6) {
-    uprintf("binding ipv6 socket\n");
-  } else {
-    uprintf("unknown family: %u\n", laddr->sa.sa_family);
-  }
-  error = sobind(fastd_sock.sock, &laddr->sa, curthread);
+  rm_wunlock(&fastd_lock);
+  return (error);
+}
 
-  if (error == EADDRINUSE){
-    uprintf("address in use\n");
-    goto out;
-  }
-  if (error) {
-    goto out;
-  }
 
-  error = udp_set_kernel_tunneling(fastd_sock.sock, fastd_rcv_udp_packet, &fastd_sock);
-  if (error) {
-    uprintf("cannot set tunneling function: %d\n", error);
-  }else{
-    uprintf("tunneling function set\n");
-  }
+// Closes all sockets
+static void
+fastd_close_sockets(union fastd_sockaddr *laddr){
+	struct fastd_socket *sock;
+
+	rm_wlock(&fastd_lock);
+
+	LIST_FOREACH(sock, &fastd_sockets_head, list) {
+		soclose(sock->socket);
+		free(sock, M_FASTD);
+	}
+	LIST_INIT(&fastd_sockets_head);
+
+	rm_wunlock(&fastd_lock);
+}
+
+
+// Finds a socket by sockaddr
+static struct fastd_socket *
+fastd_find_socket(union fastd_sockaddr *sa){
+	struct fastd_socket *sock;
+	struct rm_priotracker tracker;
+
+	rm_rlock(&fastd_lock, &tracker);
+
+	LIST_FOREACH(sock, &fastd_sockets_head, list) {
+		if (fastd_sockaddr_equal(sa, &sock->laddr)) {
+			goto out;
+		}
+	}
+
+	// no socket found
+	sock = NULL;
 
 out:
-  return (error);
+	rm_runlock(&fastd_lock, &tracker);
+	return sock;
 }
-
-
-static void
-fastd_destroy_socket(){
-  if (fastd_sock.sock != NULL) {
-    uprintf("destroy socket\n");
-    soclose(fastd_sock.sock);
-    fastd_sock.sock = NULL;
-  }
-}
-
 
 static void
 fastd_rcv_udp_packet(struct mbuf *m, int offset, struct inpcb *inpcb,
@@ -493,11 +550,9 @@ fastd_send_packet(struct uio *uio) {
   size_t datalen, addrlen;
   struct fastd_message msg;
   struct mbuf *m = NULL;
-  struct sockaddr dst_addr;
+  struct fastd_socket *sock;
+  union fastd_sockaddr src_addr, dst_addr;
 
-  if (fastd_sock.sock == NULL) {
-    return EIO;
-  }
 
   addrlen = 2 * sizeof(struct fastd_inaddr);
   datalen = uio->uio_iov->iov_len - addrlen;
@@ -509,7 +564,15 @@ fastd_send_packet(struct uio *uio) {
   }
 
   // Build destination address
-  inet_to_sock((union fastd_sockaddr *)&dst_addr, &msg.dst);
+  inet_to_sock(&src_addr, &msg.src);
+  inet_to_sock(&dst_addr, &msg.dst);
+
+  // Find socket by address
+  sock = fastd_find_socket(&src_addr);
+  if (sock == NULL) {
+  	error = EIO;
+    goto out;
+  }
 
   // Allocate space for packet
   m = m_getm(NULL, datalen, M_WAITOK, MT_DATA);
@@ -524,7 +587,7 @@ fastd_send_packet(struct uio *uio) {
   }
 
   // Send packet
-  error = sosend(fastd_sock.sock, &dst_addr, NULL, m, NULL, 0, uio->uio_td);
+  error = sosend(sock->socket, &dst_addr.sa, NULL, m, NULL, 0, uio->uio_td);
   if (error != 0){
     goto fail;
   }
@@ -563,11 +626,10 @@ fastd_iface_unload()
   if_clone_detach(fastd_cloner);
 
   rm_wlock(&fastd_lock);
-  while ((sc = TAILQ_FIRST(&fastdhead)) != NULL) {
+  while ((sc = LIST_FIRST(&fastd_ifaces_head)) != NULL) {
     fastd_destroy(sc);
   }
   rm_wunlock(&fastd_lock);
-  rm_destroy(&fastd_lock);
 
   for (i = 0; i < FASTD_HASH_SIZE; i++) {
     KASSERT(LIST_EMPTY(&fastd_peers[i]), "fastd: list not empty");
@@ -606,7 +668,7 @@ fastd_clone_create(struct if_clone *ifc, int unit, caddr_t params)
   if_attach(ifp);
 
   rm_wlock(&fastd_lock);
-  TAILQ_INSERT_TAIL(&fastdhead, sc, fastd_list);
+  LIST_INSERT_HEAD(&fastd_ifaces_head, sc, fastd_ifaces);
   rm_wunlock(&fastd_lock);
 
   return (0);
@@ -633,7 +695,7 @@ fastd_clone_destroy(struct ifnet *ifp)
 static void
 fastd_destroy(struct fastd_softc *sc)
 {
-  TAILQ_REMOVE(&fastdhead, sc, fastd_list);
+  LIST_REMOVE(sc, fastd_ifaces);
 
   if_detach(sc->fastd_ifp);
   if_free(sc->fastd_ifp);
