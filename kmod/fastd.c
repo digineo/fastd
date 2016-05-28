@@ -2,6 +2,7 @@
 #include <sys/module.h>
 #include <sys/kernel.h>
 #include <sys/systm.h>
+#include <sys/event.h>
 #include <sys/conf.h>
 #include <sys/uio.h>
 #include <sys/malloc.h>
@@ -11,6 +12,7 @@
 #include <sys/buf_ring.h>
 #include <sys/mutex.h>
 #include <sys/param.h>
+#include <sys/poll.h>
 #include <sys/priv.h>
 #include <sys/proc.h>
 #include <sys/systm.h>
@@ -79,19 +81,33 @@ MALLOC_DEFINE(M_FASTD, "fastd_buffer", "buffer for fastd driver");
 static d_read_t		fastd_read;
 static d_write_t	fastd_write;
 static d_ioctl_t	fastd_ioctl;
+static d_poll_t		fastd_poll;
+static d_kqfilter_t	fastd_kqfilter;
+static int		fastd_kqevent(struct knote *, long);
+static void		fastd_kqdetach(struct knote *);
+
+static struct filterops fastd_filterops = {
+	.f_isfd =	0,
+	.f_attach =	NULL,
+	.f_detach =	fastd_kqdetach,
+	.f_event =	fastd_kqevent,
+};
 
 static struct cdevsw fastd_cdevsw = {
 	.d_version =	D_VERSION,
 	.d_read =	fastd_read,
 	.d_write =	fastd_write,
 	.d_ioctl =	fastd_ioctl,
+	.d_poll =	fastd_poll,
+	.d_kqfilter =	fastd_kqfilter,
 	.d_name =	"fastd"
 };
+
 
 static struct cdev *fastd_dev;
 static struct buf_ring *fastd_msgbuf;
 static struct mtx       fastd_msgmtx;
-
+static struct selinfo fastd_rsel;
 
 // ------------------------------------
 // Kernel Sockets
@@ -228,16 +244,12 @@ inet_to_sock(union fastd_sockaddr *dst, const struct fastd_inaddr *src){
 static inline void
 fastd_sockaddr_copy(union fastd_sockaddr *dst, const union fastd_sockaddr *src)
 {
-  bzero(dst, sizeof(*dst));
-
   switch (src->sa.sa_family) {
   case AF_INET:
-    dst->in4 = *satoconstsin(src);
-    dst->in4.sin_len = sizeof(struct sockaddr_in);
+    memcpy(dst, src, sizeof(struct sockaddr_in));
     break;
   case AF_INET6:
-    dst->in6 = *satoconstsin6(src);
-    dst->in6.sin6_len = sizeof(struct sockaddr_in6);
+    memcpy(dst, src, sizeof(struct sockaddr_in6));
     break;
   }
 }
@@ -274,6 +286,49 @@ fastd_sockaddr_equal(const union fastd_sockaddr *a, const union fastd_sockaddr *
 // Functions for control device
 // ------------------------------------------------------------------
 
+
+static int
+fastd_poll(struct cdev *dev, int events, struct thread *td)
+{
+	int revents;
+
+	mtx_lock(&fastd_msgmtx);
+	if (buf_ring_empty(fastd_msgbuf)) {
+		revents = 0;
+		if (events & (POLLIN | POLLRDNORM))
+			selrecord(td, &fastd_rsel);
+	} else {
+		revents = events & (POLLIN | POLLRDNORM);
+	}
+	mtx_unlock(&fastd_msgmtx);
+	return (revents);
+}
+
+static int
+fastd_kqfilter(struct cdev *dev, struct knote *kn)
+{
+	switch (kn->kn_filter) {
+	case EVFILT_READ:
+		kn->kn_fop = &fastd_filterops;
+		knlist_add(&fastd_rsel.si_note, kn, 0);
+		return (0);
+	default:
+		return (EINVAL);
+	}
+}
+
+static int
+fastd_kqevent(struct knote *kn, long hint)
+{
+	kn->kn_data = buf_ring_count(fastd_msgbuf);
+	return (kn->kn_data > 0);
+}
+
+static void
+fastd_kqdetach(struct knote *kn)
+{
+	knlist_remove(&fastd_rsel.si_note, kn, 0);
+}
 
 static int
 fastd_write(struct cdev *dev, struct uio *uio, int ioflag)
@@ -322,6 +377,7 @@ fastd_modevent(module_t mod __unused, int event, void *arg __unused)
 	case MOD_LOAD:
 		rm_init(&fastd_lock, "fastd_lock");
 		mtx_init(&fastd_msgmtx, "fastd", NULL, MTX_SPIN);
+		knlist_init_mtx(&fastd_rsel.si_note, NULL);
 		fastd_msgbuf = buf_ring_alloc(FASTD_MSG_BUFFER_SIZE, M_FASTD, M_WAITOK, &fastd_msgmtx);
 		fastd_dev = make_dev(&fastd_cdevsw, 0, UID_ROOT, GID_WHEEL, 0600, "fastd");
 		fastd_iface_load();
@@ -331,6 +387,8 @@ fastd_modevent(module_t mod __unused, int event, void *arg __unused)
 	case MOD_UNLOAD:
 		fastd_iface_unload();
 		fastd_close_sockets();
+		knlist_destroy(&fastd_rsel.si_note);
+		seldrain(&fastd_rsel);
 		destroy_dev(fastd_dev);
 
 		// Free ringbuffer and stored items
@@ -396,7 +454,7 @@ fastd_bind_socket(union fastd_sockaddr *sa){
 	sock = malloc(sizeof(*sock), M_FASTD, M_WAITOK | M_ZERO);
 	fastd_sockaddr_copy(&sock->laddr, sa);
 
-	error = socreate(sock->laddr.sa.sa_family, &sock->socket, SOCK_DGRAM, IPPROTO_UDP, curthread->td_ucred, curthread);
+	error = socreate(sa->sa.sa_family, &sock->socket, SOCK_DGRAM, IPPROTO_UDP, curthread->td_ucred, curthread);
 
 	if (error) {
 		goto out;
@@ -530,6 +588,8 @@ fastd_rcv_udp_packet(struct mbuf *m, int offset, struct inpcb *inpcb,
 
     // Store into ringbuffer to character device
     buf_ring_enqueue(fastd_msgbuf, fastd_msg);
+    selwakeup(&fastd_rsel);
+    KNOTE_UNLOCKED(&fastd_rsel.si_note, 0);
     break;
   case FASTD_HDR_DATA:
     // TODO forward to network interface
@@ -537,7 +597,6 @@ fastd_rcv_udp_packet(struct mbuf *m, int offset, struct inpcb *inpcb,
   default:
     printf("invalid fastd-packet type=%02X\n", msg_type);
   }
-
 out:
   if (m != NULL)
     m_freem(m);
