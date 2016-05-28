@@ -409,7 +409,7 @@ fastd_bind_socket(union fastd_sockaddr *sa){
 		goto fail;
 	}
 
-	error = udp_set_kernel_tunneling(sock->socket, fastd_rcv_udp_packet, &sock);
+	error = udp_set_kernel_tunneling(sock->socket, fastd_rcv_udp_packet, sock);
 
 	if (error) {
 		uprintf("can not set tunneling function: %d\n", error);
