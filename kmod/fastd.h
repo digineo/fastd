@@ -22,7 +22,7 @@ union fastd_sockaddr {
 
 struct fastd_inaddr {
   char      addr[16]; // IPv4/IPv6 address
-  in_port_t port;
+  in_port_t port;     // in network byte order
 };
 
 // src + dst address + (header + data)

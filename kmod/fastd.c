@@ -130,7 +130,7 @@ struct fastd_softc {
   LIST_ENTRY(fastd_softc) fastd_ifaces; // list of all interfaces
   LIST_ENTRY(fastd_softc) fastd_flow_entry; // entry in flow table
 
-  struct ifnet *fastd_ifp;  /* the interface */
+  struct ifnet *ifp;  /* the interface */
   union fastd_sockaddr remote;  /* remote ip address and port */
 };
 
@@ -557,9 +557,11 @@ fastd_rcv_udp_packet(struct mbuf *m, int offset, struct inpcb *inpcb,
     const struct sockaddr *sa_src, void *xfso)
 	{
 	struct fastd_message *fastd_msg;
+	struct fastd_softc *sc;
+	struct fastd_socket *fso;
 	char msg_type;
 	u_int datalen;
-	struct fastd_socket *fso;
+	int isr;
 
 	// Ensure packet header exists
 	M_ASSERTPKTHDR(m);
@@ -597,21 +599,52 @@ fastd_rcv_udp_packet(struct mbuf *m, int offset, struct inpcb *inpcb,
 		KNOTE_UNLOCKED(&fastd_rsel.si_note, 0);
 		break;
 	case FASTD_HDR_DATA:
+		rm_wlock(&fastd_lock);
+		sc = fastd_lookup_peer((const union fastd_sockaddr *)sa_src);
+		if (sc == NULL) {
+			// No interface found
+			goto unlock;
+		}
+
 		if (datalen == 1){
 			// Keepalive packet
-  			m->m_len = m->m_pkthdr.len = datalen;
-  			m->m_data[0] = m->m_data[offset];
+			m->m_len = m->m_pkthdr.len = datalen;
+			m->m_data[0] = m->m_data[offset];
 			int error = sosend(fso->socket, (struct sockaddr *)sa_src, NULL, m, NULL, 0, curthread);
 			if (error)
 				printf("fastd keepalive response failed: %d\n", error);
+			else
+				m = NULL;
 		} else {
-			// TODO forward to network interface
+			// forward to network interface
 			printf("other data packet\n");
+
+			switch (ntohs(m->m_data[offset+1])) {
+			case AF_INET:
+				isr = NETISR_IP;
+				break;
+			case AF_INET6:
+				isr = NETISR_IPV6;
+				break;
+			default:
+				goto unlock;
+			}
+			m_adj(m, offset);
+			m_clrprotoflags(m);
+			m->m_pkthdr.rcvif = sc->ifp;
+
+			if_inc_counter(sc->ifp, IFCOUNTER_IPACKETS, 1);
+			if_inc_counter(sc->ifp, IFCOUNTER_IBYTES, m->m_pkthdr.len);
+			netisr_dispatch(isr, m);
+			m = NULL;
 		}
+unlock:
+		rm_wunlock(&fastd_lock);
 		break;
 	default:
 		printf("invalid fastd-packet type=%02X datalen=%d\n", msg_type, datalen);
 	}
+
 out:
 	if (m != NULL)
 		m_freem(m);
@@ -729,7 +762,7 @@ fastd_clone_create(struct if_clone *ifc, int unit, caddr_t params)
     goto fail;
   }
 
-  sc->fastd_ifp = ifp;
+  sc->ifp = ifp;
 
   if_initname(ifp, fastdname, unit);
   ifp->if_softc = sc;
@@ -771,8 +804,8 @@ fastd_destroy(struct fastd_softc *sc)
 {
   LIST_REMOVE(sc, fastd_ifaces);
 
-  if_detach(sc->fastd_ifp);
-  if_free(sc->fastd_ifp);
+  if_detach(sc->ifp);
+  if_free(sc->ifp);
   free(sc, M_FASTD);
 }
 
@@ -950,11 +983,11 @@ fastd_ifioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
     switch (sc->remote.sa.sa_family) {
     case AF_INET:
       sprintf(ifs->ascii + strlen(ifs->ascii),
-            "\tremote port=%d inet4=%s\n", sc->remote.in4.sin_port, inet_ntoa(sc->remote.in4.sin_addr));
+            "\tremote port=%d inet4=%s\n", ntohs(sc->remote.in4.sin_port), inet_ntoa(sc->remote.in4.sin_addr));
       break;
     case AF_INET6:
       sprintf(ifs->ascii + strlen(ifs->ascii),
-            "\tremote port=%d inet6=%s\n", sc->remote.in6.sin6_port, ip6_sprintf(ip6buf, &sc->remote.in6.sin6_addr));
+            "\tremote port=%d inet6=%s\n", ntohs(sc->remote.in6.sin6_port), ip6_sprintf(ip6buf, &sc->remote.in6.sin6_addr));
       break;
     }
     break;
@@ -962,6 +995,7 @@ fastd_ifioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
   case SIOCAIFADDR:
     ifp->if_flags |= IFF_UP;
     ifp->if_drv_flags |= IFF_DRV_RUNNING;
+    printf("SIOCAIFADDR\n");
     /*
      * Everything else is done at a higher level.
      */
