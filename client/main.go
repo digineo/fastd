@@ -16,11 +16,14 @@ import (
 )
 
 var (
-	ioctl_LIST         = _IO('F', 1)
-	ioctl_BIND         = _IOW('F', 2, 18)
-	ioctl_CLOSE        = _IOW('F', 3, 18)
-	ioctl_SET_DRV_SPEC = _IOW('i', 123, unsafe.Sizeof(C.struct_ifdrv{}))
-	ioctl_GET_DRV_SPEC = _IOWR('i', 123, unsafe.Sizeof(C.struct_ifdrv{}))
+	ioctl_LIST          = _IO('F', 1)
+	ioctl_BIND          = _IOW('F', 2, 18)
+	ioctl_CLOSE         = _IOW('F', 3, 18)
+	ioctl_SIOCIFCREATE  = _IOWR('i', 122, unsafe.Sizeof(C.struct_ifreq{})) // create clone if
+	ioctl_SIOCIFCREATE2 = _IOWR('i', 124, unsafe.Sizeof(C.struct_ifreq{})) // create clone if
+	ioctl_SIOCIFDESTROY = _IOW('i', 121, unsafe.Sizeof(C.struct_ifreq{}))  // destroy clone if
+	ioctl_SET_DRV_SPEC  = _IOW('i', 123, unsafe.Sizeof(C.struct_ifdrv{}))
+	ioctl_GET_DRV_SPEC  = _IOWR('i', 123, unsafe.Sizeof(C.struct_ifdrv{}))
 
 	implementations = map[string]ServerFactory{
 		"udp":    NewUDPServer,

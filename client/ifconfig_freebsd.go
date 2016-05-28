@@ -18,21 +18,30 @@ const (
 	FASTD_PARAM_WITH_REMOTE
 )
 
+var (
+	controlFd = newControlFd()
+)
+
 type ifconfigParam struct {
 	remote [18]byte
 }
 
-// Set remote address
-func ifconfig(args []string) {
-	ifname := args[0]
-	ipaddr := args[1]
-	port, _ := strconv.Atoi(args[2])
-
+func newControlFd() int {
 	fd, err := syscall.Socket(syscall.AF_INET, syscall.SOCK_DGRAM, syscall.IPPROTO_UDP)
 	if err != nil {
 		panic(err)
 	}
-	defer syscall.Close(fd)
+	return fd
+}
+
+// Set remote address
+func ifconfig(args []string) {
+	log.Println("created:", CloneIface("fastd"))
+	return
+
+	ifname := args[0]
+	ipaddr := args[1]
+	port, _ := strconv.Atoi(args[2])
 
 	sockaddr := Sockaddr{
 		IP:   net.ParseIP(ipaddr).To16(),
@@ -54,6 +63,28 @@ func ifconfig(args []string) {
 		ifd.ifd_name[i] = C.char(c)
 	}
 
-	recode := ioctl(uintptr(fd), ioctl_SET_DRV_SPEC, uintptr(unsafe.Pointer(ifd)))
+	recode := ioctl(uintptr(controlFd), ioctl_SET_DRV_SPEC, uintptr(unsafe.Pointer(ifd)))
 	log.Println(recode)
+}
+
+func CloneIface(name string) string {
+	return cloneDestroyInterface(ioctl_SIOCIFCREATE, name)
+}
+
+func DestroyIface(name string) string {
+	return cloneDestroyInterface(ioctl_SIOCIFDESTROY, name)
+}
+
+func cloneDestroyInterface(ioctlId uintptr, name string) string {
+	req := &C.struct_ifreq{}
+	for i, c := range name {
+		req.ifr_name[i] = C.char(c)
+	}
+
+	recode := ioctl(uintptr(controlFd), ioctlId, uintptr(unsafe.Pointer(req)))
+	if recode != nil {
+		return ""
+	}
+
+	return C.GoString(&req.ifr_name[0])
 }
