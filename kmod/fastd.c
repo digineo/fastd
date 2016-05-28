@@ -555,51 +555,66 @@ out:
 static void
 fastd_rcv_udp_packet(struct mbuf *m, int offset, struct inpcb *inpcb,
     const struct sockaddr *sa_src, void *xfso)
-{
-  struct fastd_message *fastd_msg;
-  char msg_type;
-  u_int datalen;
-  struct fastd_socket *fso;
+	{
+	struct fastd_message *fastd_msg;
+	char msg_type;
+	u_int datalen;
+	struct fastd_socket *fso;
 
-  // Ensure packet header exists
-  M_ASSERTPKTHDR(m);
+	// Ensure packet header exists
+	M_ASSERTPKTHDR(m);
 
-  fso = xfso;
-  offset += sizeof(struct udphdr);
+	fso = xfso;
+	offset += sizeof(struct udphdr);
+	datalen = m->m_len - offset;
 
-  // drop UDP packets with less than 4 bytes payload
-  if (m->m_pkthdr.len < offset + 4)
-    goto out;
+	printf("fastd-packet datalen=%d\n", datalen);
 
-  m_copydata(m, offset, 1, (caddr_t) &msg_type);
+	// drop UDP packets with less than 1 byte payload
+	if (datalen < 1)
+		goto out;
 
-  switch (msg_type){
-  case FASTD_HDR_CTRL:
-    datalen   = m->m_len - offset;
-    fastd_msg = malloc(sizeof(struct fastd_message) + datalen, M_FASTD, M_WAITOK);
-    fastd_msg->datalen = datalen;
+	m_copydata(m, offset, 1, (caddr_t) &msg_type);
 
-    // Copy addresses
-    sock_to_inet(&fastd_msg->src, (union fastd_sockaddr *)sa_src);
-    sock_to_inet(&fastd_msg->dst, &fso->laddr);
+	switch (msg_type){
+	case FASTD_HDR_CTRL:
+		if (datalen < 4)
+			goto out;
 
-    // Copy fastd packet
-    m_copydata(m, offset, datalen, (caddr_t) &fastd_msg->data);
+		fastd_msg = malloc(sizeof(struct fastd_message) + datalen, M_FASTD, M_WAITOK);
+		fastd_msg->datalen = datalen;
 
-    // Store into ringbuffer to character device
-    buf_ring_enqueue(fastd_msgbuf, fastd_msg);
-    selwakeup(&fastd_rsel);
-    KNOTE_UNLOCKED(&fastd_rsel.si_note, 0);
-    break;
-  case FASTD_HDR_DATA:
-    // TODO forward to network interface
-    break;
-  default:
-    printf("invalid fastd-packet type=%02X\n", msg_type);
-  }
+		// Copy addresses
+		sock_to_inet(&fastd_msg->src, (union fastd_sockaddr *)sa_src);
+		sock_to_inet(&fastd_msg->dst, &fso->laddr);
+
+		// Copy fastd packet
+		m_copydata(m, offset, datalen, (caddr_t) &fastd_msg->data);
+
+		// Store into ringbuffer to character device
+		buf_ring_enqueue(fastd_msgbuf, fastd_msg);
+		selwakeup(&fastd_rsel);
+		KNOTE_UNLOCKED(&fastd_rsel.si_note, 0);
+		break;
+	case FASTD_HDR_DATA:
+		if (datalen == 1){
+			// Keepalive packet
+  			m->m_len = m->m_pkthdr.len = datalen;
+  			m->m_data[0] = m->m_data[offset];
+			int error = sosend(fso->socket, (struct sockaddr *)sa_src, NULL, m, NULL, 0, curthread);
+			if (error)
+				printf("fastd keepalive response failed: %d\n", error);
+		} else {
+			// TODO forward to network interface
+			printf("other data packet\n");
+		}
+		break;
+	default:
+		printf("invalid fastd-packet type=%02X datalen=%d\n", msg_type, datalen);
+	}
 out:
-  if (m != NULL)
-    m_freem(m);
+	if (m != NULL)
+		m_freem(m);
 }
 
 // Send outgoing control packet via UDP
