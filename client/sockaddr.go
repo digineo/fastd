@@ -49,7 +49,7 @@ func parseSockaddr(buf []byte) *Sockaddr {
 
 	return &Sockaddr{
 		IP:   net.IP(buf[0:16]),
-		Port: (uint16(buf[16]) << 8) | uint16(buf[17]),
+		Port: binary.BigEndian.Uint16(buf[16:]),
 	}
 }
 
