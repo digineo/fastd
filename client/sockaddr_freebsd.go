@@ -1,17 +1,25 @@
 package main
 
 import (
-	"net"
 	"syscall"
 	"unsafe"
 )
 
-func sockaddrToRaw(ip net.IP, port uint16) unsafe.Pointer {
-	addr := &syscall.RawSockaddrInet4{
-		Len:    syscall.SizeofSockaddrInet4,
-		Family: syscall.AF_INET,
-		Port:   uint16toh(port),
+func (addr *Sockaddr) WriteNative(sockaddr *syscall.RawSockaddr) {
+	switch addr.Family() {
+	case syscall.AF_INET:
+		raw := (*syscall.RawSockaddrInet4)(unsafe.Pointer(sockaddr))
+		raw.Len = syscall.SizeofSockaddrInet4
+		raw.Family = syscall.AF_INET
+		raw.Port = uint16toh(addr.Port)
+		copy(raw.Addr[:], addr.IP.To4())
+	case syscall.AF_INET6:
+		raw := (*syscall.RawSockaddrInet6)(unsafe.Pointer(sockaddr))
+		raw.Len = syscall.SizeofSockaddrInet6
+		raw.Family = syscall.AF_INET6
+		raw.Port = uint16toh(addr.Port)
+		copy(raw.Addr[:], addr.IP.To16())
+	default:
+		panic("unknown family")
 	}
-	copy(addr.Addr[:], ip.To4())
-	return unsafe.Pointer(addr)
 }

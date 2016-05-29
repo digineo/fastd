@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"log"
+	"net"
 	"reflect"
 )
 
@@ -114,6 +115,14 @@ func handleFinishHandshake(msg *Message, reply *Message, peer *Peer) bool {
 	// Clear handshake keys
 	peer.sharedKey = nil
 	peer.peerHandshakeKey = nil
+
+	peer.Ifname = CloneIface("fastd0")
+	peer.Ifname = "fastd0"
+	SetRemote(peer.Ifname, peer.Remote)
+	SetAlias(peer.Ifname,
+		&Sockaddr{IP: net.ParseIP("192.168.0.0")},
+		&Sockaddr{IP: net.ParseIP("192.168.0.1")},
+	)
 
 	return false
 }
