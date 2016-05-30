@@ -88,7 +88,7 @@ func (srv *KernelServer) readPackets() error {
 	}
 
 	for {
-		num, _, errno := syscall.Syscall(syscall.SYS_POLL, uintptr(unsafe.Pointer(&pollFd)), uintptr(1), 3000)
+		num, _, errno := syscall.Syscall(syscall.SYS_POLL, uintptr(unsafe.Pointer(&pollFd)), uintptr(1), 60*1000)
 		log.Printf("Poll errno=%d, num=%d revents=%04x", errno, num, pollFd.revents)
 
 		if errno != 0 {
