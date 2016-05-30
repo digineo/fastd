@@ -119,10 +119,20 @@ func handleFinishHandshake(msg *Message, reply *Message, peer *Peer) bool {
 	peer.Ifname = CloneIface("fastd0")
 	peer.Ifname = "fastd0"
 	SetRemote(peer.Ifname, peer.Remote)
-	SetAlias(peer.Ifname,
-		&Sockaddr{IP: net.ParseIP("192.168.0.0")},
-		&Sockaddr{IP: net.ParseIP("192.168.0.1")},
-	)
+
+	if err := SetAlias(peer.Ifname,
+		&Sockaddr{IP: net.ParseIP("192.168.8.0")},
+		&Sockaddr{IP: net.ParseIP("192.168.8.1")},
+	); err != nil {
+		log.Println("setalias4 failed:", err)
+	}
+
+	if err := SetAlias(peer.Ifname,
+		&Sockaddr{IP: net.ParseIP("fe80::1")},
+		&Sockaddr{IP: net.ParseIP("fe80::2")},
+	); err != nil {
+		log.Println("setalias6 failed:", err)
+	}
 
 	return false
 }
