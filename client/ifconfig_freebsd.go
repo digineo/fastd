@@ -1,10 +1,8 @@
 package main
 
 /*
-#include <net/if.h>
-#include <net/if_var.h>
-#include <netinet/in.h>
-#include <netinet/in_var.h>
+#include <stdlib.h>
+#include "ifconfig.h"
 */
 import "C"
 
@@ -23,7 +21,8 @@ const (
 
 var (
 	// File descriptor for ioctl on fastd network interfaces
-	controlFd = newControlFd()
+	controlFd4 = newControlFd(syscall.AF_INET)
+	controlFd6 = newControlFd(syscall.AF_INET6)
 
 	tunnelMaskIPv4 = net.IPv4(255, 255, 255, 255)
 	tunnelMaskIPv6 = net.IP(bytes.Repeat([]byte{255}, 16))
@@ -33,16 +32,20 @@ type ifconfigParam struct {
 	remote [18]byte
 }
 
-func newControlFd() int {
-	fd, err := syscall.Socket(syscall.AF_INET, syscall.SOCK_DGRAM, syscall.IPPROTO_UDP)
+func newControlFd(af int) int {
+	fd, err := syscall.Socket(af, syscall.SOCK_DGRAM, 0)
 	if err != nil {
 		panic(err)
+	}
+
+	if res := C.set_fd(C.sa_family_t(af), C.int(fd)); res != 0 {
+		panic("set_fd() failed")
 	}
 	return fd
 }
 
 // Set remote address
-func SetRemote(ifname string, remote *Sockaddr) {
+func SetRemote(ifname string, remote *Sockaddr) error {
 
 	param := &ifconfigParam{
 		remote: remote.RawFixed(),
@@ -59,8 +62,7 @@ func SetRemote(ifname string, remote *Sockaddr) {
 		ifd.ifd_name[i] = C.char(c)
 	}
 
-	recode := ioctl(uintptr(controlFd), ioctl_SET_DRV_SPEC, uintptr(unsafe.Pointer(ifd)))
-	log.Println(recode)
+	return ioctl(uintptr(controlFd4), ioctl_SET_DRV_SPEC, uintptr(unsafe.Pointer(ifd)))
 }
 
 func CloneIface(name string) string {
@@ -72,34 +74,37 @@ func DestroyIface(name string) string {
 	return ioctl_ifreq(ioctl_SIOCIFDESTROY, name)
 }
 
-func SetAlias(ifname string, src, dst *Sockaddr) error {
-	// Delete alias
-	ioctl_ifreq(ioctl_SIOCDIFADDR, ifname)
-	var mask *net.IP
+func SetAlias(ifname string, addr, dstaddr *Sockaddr) (err error) {
+	var res uintptr
+	name := C.CString(ifname)
+	defer C.free(unsafe.Pointer(name))
 
-	if isIPv4(src.IP) {
-		mask = &tunnelMaskIPv4
+	if isIPv4(addr.IP) {
+		mask := Sockaddr{IP: tunnelMaskIPv4}
+
+		res = uintptr(C.remove_alias4(name))
+		if res != 0 {
+			log.Println("alias4_remove:", syscall.Errno(res))
+		}
+
+		res = uintptr(C.add_alias4(name, addr.Native(), dstaddr.Native(), mask.Native()))
+
 	} else {
-		mask = &tunnelMaskIPv6
-	}
-	return AddAlias(ifname, src, dst, &Sockaddr{IP: *mask})
-}
+		log.Println(tunnelMaskIPv6)
+		mask := Sockaddr{IP: tunnelMaskIPv6}
 
-func AddAlias(ifname string, src, dst, mask *Sockaddr) error {
-	req := C.struct_in_aliasreq{}
-	// source address
-	src.WriteNative((*syscall.RawSockaddr)(unsafe.Pointer(&req.ifra_addr)))
-	// destination address
-	dst.WriteNative((*syscall.RawSockaddr)(unsafe.Pointer(&req.ifra_broadaddr)))
-	// mask
-	mask.WriteNative((*syscall.RawSockaddr)(unsafe.Pointer(&req.ifra_mask)))
+		res = uintptr(C.remove_alias6(name, addr.Native()))
+		if res != 0 {
+			log.Println("alias6_remove:", syscall.Errno(res))
+		}
 
-	// copy ifname
-	for i, c := range ifname {
-		req.ifra_name[i] = C.char(c)
+		res = uintptr(C.add_alias6(name, addr.Native(), dstaddr.Native(), mask.Native()))
 	}
 
-	return ioctl(uintptr(controlFd), ioctl_SIOCAIFADDR, uintptr(unsafe.Pointer(&req)))
+	if res != 0 {
+		err = syscall.Errno(res)
+	}
+	return
 }
 
 // Executes ioctl with a ifreq{}
@@ -111,7 +116,7 @@ func ioctl_ifreq(ioctlId uintptr, ifname string) string {
 		req.ifr_name[i] = C.char(c)
 	}
 
-	recode := ioctl(uintptr(controlFd), ioctlId, uintptr(unsafe.Pointer(&req)))
+	recode := ioctl(uintptr(controlFd4), ioctlId, uintptr(unsafe.Pointer(&req)))
 	if recode != nil {
 		return ""
 	}
