@@ -31,8 +31,7 @@
 #include <net/if_clone.h>
 #include <net/if_types.h>
 #include <net/netisr.h>
-#include <net/route.h>
-#include <net/vnet.h>
+#include <net/bpf.h>
 
 #include <netinet/in.h>
 #include <netinet6/in6_var.h>
@@ -44,6 +43,7 @@
 
 #include "fastd.h"
 
+#define DEBUG	if_printf
 
 /* Maximum transmit packet size (default) */
 #define	FASTDMTU		1406
@@ -159,6 +159,7 @@ static int  fastd_clone_create(struct if_clone *, int, caddr_t);
 static void fastd_clone_destroy(struct ifnet *);
 static void fastd_destroy(struct fastd_softc *sc);
 static int  fastd_ifioctl(struct ifnet *, u_long, caddr_t);
+static int  fastd_output(struct ifnet *, struct mbuf *, const struct sockaddr *, struct route *ro);
 static int  fastd_ioctl_drvspec(struct fastd_softc *, struct ifdrv *, int);
 static struct if_clone *fastd_cloner;
 
@@ -561,7 +562,7 @@ fastd_rcv_udp_packet(struct mbuf *m, int offset, struct inpcb *inpcb,
 	struct fastd_socket *fso;
 	char msg_type;
 	u_int datalen;
-	int isr;
+	int isr, af;
 
 	// Ensure packet header exists
 	M_ASSERTPKTHDR(m);
@@ -569,8 +570,6 @@ fastd_rcv_udp_packet(struct mbuf *m, int offset, struct inpcb *inpcb,
 	fso = xfso;
 	offset += sizeof(struct udphdr);
 	datalen = m->m_len - offset;
-
-	printf("fastd-packet datalen=%d\n", datalen);
 
 	// drop UDP packets with less than 1 byte payload
 	if (datalen < 1)
@@ -606,32 +605,38 @@ fastd_rcv_udp_packet(struct mbuf *m, int offset, struct inpcb *inpcb,
 			goto unlock;
 		}
 
+		DEBUG(sc->ifp, "data packet received bytes=%d\n", datalen);
+
 		if (datalen == 1){
 			// Keepalive packet
-			m->m_len = m->m_pkthdr.len = datalen;
-			m->m_data[0] = m->m_data[offset];
+			m->m_len = m->m_pkthdr.len = 1;
+			m->m_data[0] = FASTD_HDR_DATA;
 			int error = sosend(fso->socket, (struct sockaddr *)sa_src, NULL, m, NULL, 0, curthread);
 			if (error)
-				printf("fastd keepalive response failed: %d\n", error);
+				DEBUG(sc->ifp, "fastd keepalive response failed: %d\n", error);
 			else
 				m = NULL;
 		} else {
 			// forward to network interface
-			printf("other data packet\n");
 
-			switch (ntohs(m->m_data[offset+1])) {
-			case AF_INET:
+			switch (m->m_data[offset+1] >> 4) {
+			case IPPROTO_IPV4:
 				isr = NETISR_IP;
+				af = AF_INET;
 				break;
-			case AF_INET6:
+			case IPPROTO_IPV6:
 				isr = NETISR_IPV6;
+				af = AF_INET6;
 				break;
 			default:
+				DEBUG(sc->ifp, "unknown ip protocol: %02x\n", m->m_data[offset+1] >> 4 );
 				goto unlock;
 			}
-			m_adj(m, offset);
-			m_clrprotoflags(m);
+
+			m_adj(m, offset+1);
 			m->m_pkthdr.rcvif = sc->ifp;
+
+			BPF_MTAP2(sc->ifp, &af, sizeof(af), m);
 
 			if_inc_counter(sc->ifp, IFCOUNTER_IPACKETS, 1);
 			if_inc_counter(sc->ifp, IFCOUNTER_IBYTES, m->m_pkthdr.len);
@@ -708,6 +713,51 @@ out:
 
 
 
+static int
+fastd_output(struct ifnet *ifp, struct mbuf *m, const struct sockaddr *dst, struct route *ro)
+{
+	int error = 0;
+	struct fastd_softc *sc = ifp->if_softc;
+	struct fastd_socket *sock;
+
+	DEBUG (ifp, "fastd_output\n");
+
+	if ((ifp->if_flags & IFF_UP) != IFF_UP) {
+		DEBUG (ifp, "fastd_output: not up\n");
+		//error = EHOSTDOWN;
+		goto drop;
+	}
+
+	BPF_MTAP2(ifp, (void *)&dst->sa_family, sizeof(dst->sa_family), m);
+
+	M_PREPEND(m, 1, M_NOWAIT);
+	if (m == NULL) {
+		if_inc_counter(ifp, IFCOUNTER_OERRORS, 1);
+		DEBUG (ifp, "M_PREPEND failed\n");
+		error = ENOBUFS;
+		goto drop;
+	}
+
+	// Mark as data packet
+	//m->m_data[0] = FASTD_HDR_DATA;
+
+	// TODO find socket
+	sock = LIST_FIRST(&fastd_sockets_head);
+	if (sock == NULL){
+		DEBUG (ifp, "can't find socket\n");
+		//error = ENETDOWN;
+		goto drop;
+	}
+
+	error = sosend(sock->socket, &sc->remote.sa, NULL, m, NULL, 0, curthread);
+	DEBUG (ifp, "fastd_output: sosend=%d len=%d\n", error, m->m_len);
+	return error;
+drop:
+	DEBUG (ifp, "dropping\n");
+	m_freem(m);
+	return error;
+}
+
 
 
 
@@ -767,12 +817,14 @@ fastd_clone_create(struct if_clone *ifc, int unit, caddr_t params)
   if_initname(ifp, fastdname, unit);
   ifp->if_softc = sc;
   ifp->if_ioctl = fastd_ifioctl;
+  ifp->if_output = fastd_output;
   ifp->if_mtu = FASTDMTU;
   ifp->if_flags = IFF_POINTOPOINT | IFF_MULTICAST;
   ifp->if_capabilities |= IFCAP_LINKSTATE;
   ifp->if_capenable |= IFCAP_LINKSTATE;
 
   if_attach(ifp);
+  bpfattach(ifp, DLT_NULL, sizeof(u_int32_t));
 
   rm_wlock(&fastd_lock);
   LIST_INSERT_HEAD(&fastd_ifaces_head, sc, fastd_ifaces);
@@ -804,6 +856,7 @@ fastd_destroy(struct fastd_softc *sc)
 {
   LIST_REMOVE(sc, fastd_ifaces);
 
+  bpfdetach(sc->ifp);
   if_detach(sc->ifp);
   if_free(sc->ifp);
   free(sc, M_FASTD);
