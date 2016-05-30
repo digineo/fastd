@@ -133,12 +133,13 @@ static LIST_HEAD(,fastd_socket) fastd_sockets_head = LIST_HEAD_INITIALIZER(fastd
 // Network Interfaces
 
 struct fastd_softc {
-  // lists are protected by global fastd_lock
-  LIST_ENTRY(fastd_softc) fastd_ifaces; // list of all interfaces
-  LIST_ENTRY(fastd_softc) fastd_flow_entry; // entry in flow table
+	// lists are protected by global fastd_lock
+	LIST_ENTRY(fastd_softc) fastd_ifaces; // list of all interfaces
+	LIST_ENTRY(fastd_softc) fastd_flow_entry; // entry in flow table
 
-  struct ifnet *ifp;  /* the interface */
-  union fastd_sockaddr remote;  /* remote ip address and port */
+	struct ifnet *ifp;  /* the interface */
+	union fastd_sockaddr remote;  /* remote ip address and port */
+	struct mtx mtx; /* protect mutable softc fields */
 };
 
 // Head of all interfaces
@@ -177,6 +178,7 @@ static int	fastd_encap4(struct fastd_softc *,
 static int	fastd_encap6(struct fastd_softc *,
 		    const union fastd_sockaddr *, struct mbuf *);
 static int	fastd_output(struct ifnet *, struct mbuf *, const struct sockaddr *, struct route *ro);
+static void	fastd_ifinit(struct ifnet *);
 static void fastd_ifstart(struct ifnet *);
 
 static void fastd_add_peer(struct fastd_softc *);
@@ -617,6 +619,7 @@ fastd_rcv_udp_packet(struct mbuf *m, int offset, struct inpcb *inpcb,
 		rm_wlock(&fastd_lock);
 		sc = fastd_lookup_peer((const union fastd_sockaddr *)sa_src);
 		if (sc == NULL) {
+			printf("fastd: unable to find peer\n");
 			// No interface found
 			goto unlock;
 		}
@@ -772,7 +775,7 @@ fastd_encap4(struct fastd_softc *sc, const union fastd_sockaddr *dst,
 	// FIXME
 	sock = LIST_FIRST(&fastd_sockets_head);
 
-	DEBUG(ifp, "encap4");
+	DEBUG(ifp, "encap4\n");
 
 	srcaddr = sock->laddr.in4.sin_addr;
 	srcport = sock->laddr.in4.sin_port;
@@ -824,7 +827,7 @@ fastd_encap6(struct fastd_softc *sc, const union fastd_sockaddr *dst,
 	// TODO fixme
 	sock = LIST_FIRST(&fastd_sockets_head);
 
-	DEBUG(ifp, "encap4");
+	DEBUG(ifp, "encap6\n");
 
 	srcaddr = &sock->laddr.in6.sin6_addr;
 	srcport = sock->laddr.in6.sin6_port;
@@ -881,6 +884,8 @@ fastd_output(struct ifnet *ifp, struct mbuf *m, const struct sockaddr *dst, stru
 	struct fastd_softc *sc;
 	u_int32_t af;
 	int error;
+
+	DEBUG(ifp, "output\n");
 
 	sc = ifp->if_softc;
 
@@ -952,46 +957,48 @@ fastd_iface_unload()
 static int
 fastd_clone_create(struct if_clone *ifc, int unit, caddr_t params)
 {
-  struct fastd_softc *sc;
-  struct ifnet *ifp;
-  int error;
+	struct fastd_softc *sc;
+	struct ifnet *ifp;
+	int error;
 
-  sc = malloc(sizeof(*sc), M_FASTD, M_WAITOK | M_ZERO);
+	sc = malloc(sizeof(*sc), M_FASTD, M_WAITOK | M_ZERO);
 
-  if (params != 0) {
-    // TODO
-  }
+	if (params != 0) {
+		// TODO
+	}
 
-  ifp = if_alloc(IFT_PPP);
-  if (ifp == NULL) {
-    error = ENOSPC;
-    goto fail;
-  }
+	ifp = if_alloc(IFT_PPP);
+	if (ifp == NULL) {
+		error = ENOSPC;
+		goto fail;
+	}
 
-  sc->ifp = ifp;
+	mtx_init(&sc->mtx, "fastd_mtx", NULL, MTX_DEF);
 
-  if_initname(ifp, fastdname, unit);
-  ifp->if_softc = sc;
-  ifp->if_ioctl = fastd_ifioctl;
-  ifp->if_output = fastd_output;
-  ifp->if_start = fastd_ifstart;
-  ifp->if_mtu = FASTDMTU;
-  ifp->if_flags = IFF_POINTOPOINT | IFF_MULTICAST;
-  ifp->if_capabilities |= IFCAP_LINKSTATE;
-  ifp->if_capenable |= IFCAP_LINKSTATE;
+	sc->ifp = ifp;
 
-  if_attach(ifp);
-  bpfattach(ifp, DLT_NULL, sizeof(u_int32_t));
+	if_initname(ifp, fastdname, unit);
+	ifp->if_softc = sc;
+	ifp->if_ioctl = fastd_ifioctl;
+	ifp->if_output = fastd_output;
+	ifp->if_start = fastd_ifstart;
+	ifp->if_mtu = FASTDMTU;
+	ifp->if_flags = IFF_POINTOPOINT | IFF_MULTICAST;
+	ifp->if_capabilities |= IFCAP_LINKSTATE;
+	ifp->if_capenable |= IFCAP_LINKSTATE;
 
-  rm_wlock(&fastd_lock);
-  LIST_INSERT_HEAD(&fastd_ifaces_head, sc, fastd_ifaces);
-  rm_wunlock(&fastd_lock);
+	if_attach(ifp);
+	bpfattach(ifp, DLT_NULL, sizeof(u_int32_t));
 
-  return (0);
+	rm_wlock(&fastd_lock);
+	LIST_INSERT_HEAD(&fastd_ifaces_head, sc, fastd_ifaces);
+	rm_wunlock(&fastd_lock);
+
+	return (0);
 
 fail:
-  free(sc, M_FASTD);
-  return (error);
+	free(sc, M_FASTD);
+	return (error);
 }
 
 
@@ -1002,6 +1009,7 @@ fastd_clone_destroy(struct ifnet *ifp)
   sc = ifp->if_softc;
 
   rm_wlock(&fastd_lock);
+  mtx_destroy(&sc->mtx);
   fastd_remove_peer(sc);
   fastd_destroy(sc);
   rm_wunlock(&fastd_lock);
@@ -1056,6 +1064,20 @@ fastd_add_peer(struct fastd_softc *sc)
 
 
 
+static void
+fastd_ifinit(struct ifnet *ifp)
+{
+	struct fastd_softc *sc = ifp->if_softc;
+
+	DEBUG(ifp, "ifinit\n");
+
+	mtx_lock(&sc->mtx);
+	ifp->if_flags |= IFF_UP;
+	mtx_unlock(&sc->mtx);
+}
+
+
+
 
 // ------------------------------------------------------------------
 // Functions for control device
@@ -1100,28 +1122,32 @@ fastd_ctrl_get_config(struct fastd_softc *sc, void *arg)
 static int
 fastd_ctrl_set_remote(struct fastd_softc *sc, void *arg)
 {
-  struct iffastdcfg *cfg = arg;
-  struct fastd_softc *other;
-  union fastd_sockaddr sa;
-  int error = 0;
-  inet_to_sock(&sa, &cfg->remote);
+	struct iffastdcfg *cfg = arg;
+	struct fastd_softc *other;
+	union fastd_sockaddr sa;
+	int error = 0;
+	inet_to_sock(&sa, &cfg->remote);
 
-  rm_wlock(&fastd_lock);
+	rm_wlock(&fastd_lock);
 
-  // address and port already taken?
-  other = fastd_lookup_peer(&sa);
-  if (other != NULL && other != sc) {
-    error = EADDRNOTAVAIL;
-    goto out;
-  }
+	// address and port already taken?
+	other = fastd_lookup_peer(&sa);
+	if (other != NULL && other != sc) {
+		error = EADDRNOTAVAIL;
+		goto out;
+	}
 
-  // reconfigure
-  fastd_remove_peer(sc);
-  fastd_sockaddr_copy(&sc->remote, &sa);
-  fastd_add_peer(sc);
+	// Reconfigure
+	fastd_remove_peer(sc);
+	fastd_sockaddr_copy(&sc->remote, &sa);
+	fastd_add_peer(sc);
+
+	// Ready to deliver packets
+	sc->ifp->if_drv_flags |= IFF_DRV_RUNNING;
+	if_link_state_change(sc->ifp, LINK_STATE_UP);
 out:
-  rm_wunlock(&fastd_lock);
-  return (error);
+	rm_wunlock(&fastd_lock);
+	return (error);
 }
 
 
@@ -1202,10 +1228,8 @@ fastd_ifioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
     }
     break;
   case SIOCSIFADDR:
-  case SIOCAIFADDR:
-    ifp->if_flags |= IFF_UP;
-    ifp->if_drv_flags |= IFF_DRV_RUNNING;
-    printf("SIOCAIFADDR\n");
+		fastd_ifinit(ifp);
+		DEBUG(ifp, "address set\n");
     /*
      * Everything else is done at a higher level.
      */
@@ -1223,10 +1247,8 @@ fastd_ifioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
     break;
   case SIOCADDMULTI:
   case SIOCDELMULTI:
-    error = EAFNOSUPPORT;
     break;
   default:
-    printf("invalid cmd: %lx != %lx\n", cmd, SIOCSIFADDR);
     error = EINVAL;
   }
   return (error);
