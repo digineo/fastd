@@ -38,6 +38,7 @@
 #include <netinet/ip.h>
 #include <netinet/ip_var.h>
 #include <netinet/ip6.h>
+#include <netinet6/ip6_var.h>
 #include <netinet/udp.h>
 #include <netinet/udp_var.h>
 
@@ -45,7 +46,7 @@
 
 #define DEBUG	if_printf
 
-/* Maximum transmit packet size (default) */
+/* Maximum output packet size (default) */
 #define	FASTDMTU		1406
 
 #define FASTD_SOCKADDR_IS_IPV4(_vxsin)	((_vxsin)->sa.sa_family == AF_INET)
@@ -109,6 +110,12 @@ static struct buf_ring *fastd_msgbuf;
 static struct mtx       fastd_msgmtx;
 static struct selinfo fastd_rsel;
 
+
+struct fastdudphdr {
+	struct udphdr	fastd_udp;
+	char type;
+} __packed;
+
 // ------------------------------------
 // Kernel Sockets
 
@@ -159,9 +166,18 @@ static int  fastd_clone_create(struct if_clone *, int, caddr_t);
 static void fastd_clone_destroy(struct ifnet *);
 static void fastd_destroy(struct fastd_softc *sc);
 static int  fastd_ifioctl(struct ifnet *, u_long, caddr_t);
-static int  fastd_output(struct ifnet *, struct mbuf *, const struct sockaddr *, struct route *ro);
 static int  fastd_ioctl_drvspec(struct fastd_softc *, struct ifdrv *, int);
 static struct if_clone *fastd_cloner;
+
+
+static void	fastd_encap_header(struct fastd_softc *, struct mbuf *,
+		    int, uint16_t, uint16_t);
+static int	fastd_encap4(struct fastd_softc *,
+		    const union fastd_sockaddr *, struct mbuf *);
+static int	fastd_encap6(struct fastd_softc *,
+		    const union fastd_sockaddr *, struct mbuf *);
+static int	fastd_output(struct ifnet *, struct mbuf *, const struct sockaddr *, struct route *ro);
+static void fastd_ifstart(struct ifnet *);
 
 static void fastd_add_peer(struct fastd_softc *);
 static void fastd_remove_peer(struct fastd_softc *);
@@ -619,17 +635,22 @@ fastd_rcv_udp_packet(struct mbuf *m, int offset, struct inpcb *inpcb,
 		} else {
 			// forward to network interface
 
-			switch (m->m_data[offset+1] >> 4) {
-			case IPPROTO_IPV4:
+			/* Get the IP version number. */
+			u_int8_t tp;
+			m_copydata(m, offset+1, 1, &tp);
+			tp = (tp >> 4) & 0xff;
+
+			switch (tp) {
+			case IPVERSION:
 				isr = NETISR_IP;
 				af = AF_INET;
 				break;
-			case IPPROTO_IPV6:
+			case (IPV6_VERSION >> 4):
 				isr = NETISR_IPV6;
 				af = AF_INET6;
 				break;
 			default:
-				DEBUG(sc->ifp, "unknown ip protocol: %02x\n", m->m_data[offset+1] >> 4 );
+				DEBUG(sc->ifp, "unknown ip version: %02x\n", tp );
 				goto unlock;
 			}
 
@@ -713,52 +734,187 @@ out:
 
 
 
+
+static void
+fastd_encap_header(struct fastd_softc *sc, struct mbuf *m, int ipoff,
+    uint16_t srcport, uint16_t dstport)
+{
+	struct fastdudphdr *hdr;
+	struct udphdr *udph;
+	int len;
+
+	len = m->m_pkthdr.len - ipoff;
+	MPASS(len >= sizeof(struct fastdudphdr));
+	hdr = mtodo(m, ipoff);
+
+	udph = &hdr->fastd_udp;
+	udph->uh_sport = srcport;
+	udph->uh_dport = dstport;
+	udph->uh_ulen = htons(len);
+	udph->uh_sum = 0;
+
+	// Set fastd packet type to data
+	hdr->type = FASTD_HDR_DATA;
+}
+
+static int
+fastd_encap4(struct fastd_softc *sc, const union fastd_sockaddr *dst,
+    struct mbuf *m)
+{
+	struct ifnet *ifp;
+	struct ip *ip;
+	struct in_addr srcaddr, dstaddr;
+	uint16_t srcport, dstport;
+	int len, error;
+	struct fastd_socket *sock;
+
+	ifp = sc->ifp;
+	// FIXME
+	sock = LIST_FIRST(&fastd_sockets_head);
+
+	DEBUG(ifp, "encap4");
+
+	srcaddr = sock->laddr.in4.sin_addr;
+	srcport = sock->laddr.in4.sin_port;
+	dstaddr = dst->in4.sin_addr;
+	dstport = dst->in4.sin_port;
+
+	M_PREPEND(m, sizeof(struct ip) + sizeof(struct fastdudphdr), M_NOWAIT);
+	if (m == NULL) {
+		if_inc_counter(ifp, IFCOUNTER_OERRORS, 1);
+		return (ENOBUFS);
+	}
+
+	len = m->m_pkthdr.len;
+
+	ip = mtod(m, struct ip *);
+	ip->ip_tos = 0;
+	ip->ip_len = htons(len);
+	ip->ip_off = 0;
+	ip->ip_ttl = IPDEFTTL;
+	ip->ip_p = IPPROTO_UDP;
+	ip->ip_sum = 0;
+	ip->ip_src = srcaddr;
+	ip->ip_dst = dstaddr;
+
+	fastd_encap_header(sc, m, sizeof(struct ip), srcport, dstport);
+
+	error = ip_output(m, NULL, NULL, 0, NULL, NULL);
+	if (error == 0) {
+		if_inc_counter(ifp, IFCOUNTER_OPACKETS, 1);
+		if_inc_counter(ifp, IFCOUNTER_OBYTES, len);
+	} else
+		if_inc_counter(ifp, IFCOUNTER_OERRORS, 1);
+
+	return (error);
+}
+
+static int
+fastd_encap6(struct fastd_softc *sc, const union fastd_sockaddr *dst,
+    struct mbuf *m)
+{
+	struct ifnet *ifp;
+	struct ip6_hdr *ip6;
+	const struct in6_addr *srcaddr, *dstaddr;
+	uint16_t srcport, dstport;
+	int len, error;
+	struct fastd_socket *sock;
+
+	ifp = sc->ifp;
+	// TODO fixme
+	sock = LIST_FIRST(&fastd_sockets_head);
+
+	DEBUG(ifp, "encap4");
+
+	srcaddr = &sock->laddr.in6.sin6_addr;
+	srcport = sock->laddr.in6.sin6_port;
+	dstaddr = &dst->in6.sin6_addr;
+	dstport = dst->in6.sin6_port;
+
+	M_PREPEND(m, sizeof(struct ip6_hdr) + sizeof(struct fastdudphdr),
+	    M_NOWAIT);
+	if (m == NULL) {
+		if_inc_counter(ifp, IFCOUNTER_OERRORS, 1);
+		return (ENOBUFS);
+	}
+
+	len = m->m_pkthdr.len;
+
+	ip6 = mtod(m, struct ip6_hdr *);
+	ip6->ip6_flow = 0;
+	ip6->ip6_vfc = IPV6_VERSION;
+	ip6->ip6_plen = 0;
+	ip6->ip6_nxt = IPPROTO_UDP;
+	ip6->ip6_hlim = IPDEFTTL;
+	ip6->ip6_src = *srcaddr;
+	ip6->ip6_dst = *dstaddr;
+
+	fastd_encap_header(sc, m, sizeof(struct ip6_hdr), srcport, dstport);
+
+	/*
+	 * XXX BMV We need support for RFC6935 before we can send and
+	 * receive IPv6 UDP packets with a zero checksum.
+	 */
+	{
+		struct udphdr *hdr = mtodo(m, sizeof(struct ip6_hdr));
+		hdr->uh_sum = in6_cksum_pseudo(ip6,
+		    m->m_pkthdr.len - sizeof(struct ip6_hdr), IPPROTO_UDP, 0);
+		m->m_pkthdr.csum_flags = CSUM_UDP_IPV6;
+		m->m_pkthdr.csum_data = offsetof(struct udphdr, uh_sum);
+	}
+
+	error = ip6_output(m, NULL, NULL, 0, NULL, NULL, NULL);
+	if (error == 0) {
+		if_inc_counter(ifp, IFCOUNTER_OPACKETS, 1);
+		if_inc_counter(ifp, IFCOUNTER_OBYTES, len);
+	} else
+		if_inc_counter(ifp, IFCOUNTER_OERRORS, 1);
+
+	return (error);
+}
+
 static int
 fastd_output(struct ifnet *ifp, struct mbuf *m, const struct sockaddr *dst, struct route *ro)
 {
-	int error = 0;
-	struct fastd_softc *sc = ifp->if_softc;
-	struct fastd_socket *sock;
+	struct rm_priotracker tracker;
+	union fastd_sockaddr remote;
+	struct fastd_softc *sc;
+	u_int32_t af;
+	int error;
 
-	DEBUG (ifp, "fastd_output\n");
+	sc = ifp->if_softc;
 
-	if ((ifp->if_flags & IFF_UP) != IFF_UP) {
-		DEBUG (ifp, "fastd_output: not up\n");
-		//error = EHOSTDOWN;
-		goto drop;
+	rm_rlock(&fastd_lock, &tracker);
+	if ((ifp->if_drv_flags & IFF_DRV_RUNNING) == 0) {
+		rm_runlock(&fastd_lock, &tracker);
+		m_freem(m);
+		return (ENETDOWN);
 	}
 
-	BPF_MTAP2(ifp, (void *)&dst->sa_family, sizeof(dst->sa_family), m);
+	/* BPF writes need to be handled specially. */
+	if (dst->sa_family == AF_UNSPEC)
+		bcopy(dst->sa_data, &af, sizeof(af));
+	else
+		af = dst->sa_family;
 
-	M_PREPEND(m, 1, M_NOWAIT);
-	if (m == NULL) {
-		if_inc_counter(ifp, IFCOUNTER_OERRORS, 1);
-		DEBUG (ifp, "M_PREPEND failed\n");
-		error = ENOBUFS;
-		goto drop;
-	}
+	fastd_sockaddr_copy(&remote, &sc->remote);
+	rm_runlock(&fastd_lock, &tracker);
 
-	// Mark as data packet
-	//m->m_data[0] = FASTD_HDR_DATA;
+	BPF_MTAP2(ifp, &af, sizeof(af), m);
 
-	// TODO find socket
-	sock = LIST_FIRST(&fastd_sockets_head);
-	if (sock == NULL){
-		DEBUG (ifp, "can't find socket\n");
-		//error = ENETDOWN;
-		goto drop;
-	}
+	if (remote.sa.sa_family == AF_INET)
+		error = fastd_encap4(sc, &remote, m);
+	else
+		error = fastd_encap6(sc, &remote, m);
 
-	error = sosend(sock->socket, &sc->remote.sa, NULL, m, NULL, 0, curthread);
-	DEBUG (ifp, "fastd_output: sosend=%d len=%d\n", error, m->m_len);
-	return error;
-drop:
-	DEBUG (ifp, "dropping\n");
-	m_freem(m);
-	return error;
+	return (error);
 }
 
 
+static void
+fastd_ifstart(struct ifnet *ifp __unused)
+{
+}
 
 
 static void
@@ -818,6 +974,7 @@ fastd_clone_create(struct if_clone *ifc, int unit, caddr_t params)
   ifp->if_softc = sc;
   ifp->if_ioctl = fastd_ifioctl;
   ifp->if_output = fastd_output;
+  ifp->if_start = fastd_ifstart;
   ifp->if_mtu = FASTDMTU;
   ifp->if_flags = IFF_POINTOPOINT | IFF_MULTICAST;
   ifp->if_capabilities |= IFCAP_LINKSTATE;
