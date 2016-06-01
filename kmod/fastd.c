@@ -49,15 +49,10 @@
 /* Maximum output packet size (default) */
 #define	FASTDMTU		1406
 
-#define FASTD_SOCKADDR_IS_IPV4(_vxsin)	((_vxsin)->sa.sa_family == AF_INET)
-#define FASTD_SOCKADDR_IS_IPV6(_vxsin)	((_vxsin)->sa.sa_family == AF_INET6)
-#define FASTD_SOCKADDR_IS_IPV46(_vxsin) \
-    (FASTD_SOCKADDR_IS_IPV4(_vxsin) || FASTD_SOCKADDR_IS_IPV6(_vxsin))
-
-#define FASTD_HASH_SHIFT  6
-#define FASTD_HASH_SIZE   (1 << FASTD_HASH_SHIFT)
-#define FASTD_HASH_ADDR(_sa)  ((_sa)->in4.sin_port % FASTD_HASH_SIZE)
-#define FASTD_HASH(_sc)   ((_sc)->remote.in4.sin_port % FASTD_HASH_SIZE)
+#define FASTD_HASH_SHIFT	6
+#define FASTD_HASH_SIZE		(1 << FASTD_HASH_SHIFT)
+#define FASTD_HASH_ADDR(_sa)	((_sa)->in4.sin_port % FASTD_HASH_SIZE)
+#define FASTD_HASH(_sc)		((_sc)->remote.in4.sin_port % FASTD_HASH_SIZE)
 
 // SIOCGDRVSPEC/SIOCSDRVSPEC commands on fastd interface
 #define FASTD_CMD_GET_CONFIG	0
@@ -120,10 +115,10 @@ struct fastdudphdr {
 // Kernel Sockets
 
 struct fastd_socket {
-  LIST_ENTRY(fastd_socket) list;
-  LIST_HEAD(,fastd_softc) softc_head; // List of all assigned interfaces
-  struct socket        *socket;
-  union fastd_sockaddr  laddr;
+	LIST_ENTRY(fastd_socket) list;
+	LIST_HEAD(,fastd_softc) softc_head; // List of all assigned interfaces
+	struct socket        *socket;
+	union fastd_sockaddr  laddr;
 };
 
 // Head of all kernel sockets
@@ -189,9 +184,9 @@ static int  fastd_ctrl_get_config(struct fastd_softc *, void *);
 static int  fastd_ctrl_set_remote(struct fastd_softc *, void *);
 
 struct fastd_control {
-  int (*fastdc_func)(struct fastd_softc *, void *);
-  int fastdc_argsize;
-  int fastdc_flags;
+	int (*fastdc_func)(struct fastd_softc *, void *);
+	int fastdc_argsize;
+	int fastdc_flags;
 #define FASTD_CTRL_FLAG_COPYIN  0x01
 #define FASTD_CTRL_FLAG_COPYOUT 0x02
 };
@@ -206,52 +201,52 @@ struct fastd_control {
 
 static inline int
 isIPv4(const struct fastd_inaddr *inaddr){
-  char *buf = (char *) inaddr;
-  return (
-       (char)0x00 == (buf[0] | buf[1] | buf[2] | buf[3] | buf[4] | buf[5]| buf[6] | buf[7] | buf[8] | buf[9])
-    && (char)0xff == (buf[10] & buf[11])
-  );
+	char *buf = (char *) inaddr;
+	return (
+			 (char)0x00 == (buf[0] | buf[1] | buf[2] | buf[3] | buf[4] | buf[5]| buf[6] | buf[7] | buf[8] | buf[9])
+		&& (char)0xff == (buf[10] & buf[11])
+	);
 }
 
 // Copies a fastd_inaddr into a fixed length fastd_sockaddr
 static inline void
 sock_to_inet(struct fastd_inaddr *dst, const union fastd_sockaddr *src){
-  switch (src->sa.sa_family) {
-  case AF_INET:
-    bzero(dst->addr, 10);
-    memset((char *)&dst->addr + 10, 0xff, 2);
-    memcpy((char *)&dst->addr + 12, &src->in4.sin_addr, 4);
-    memcpy(        &dst->port,      &src->in4.sin_port, 2);
-    break;
-  case AF_INET6:
-    memcpy(&dst->addr, &src->in6.sin6_addr, 16);
-    memcpy(&dst->port, &src->in6.sin6_port, 2);
-    break;
-  default:
-    panic("unsupported address family: %d", src->sa.sa_family);
-  }
+	switch (src->sa.sa_family) {
+	case AF_INET:
+		bzero(dst->addr, 10);
+		memset((char *)&dst->addr + 10, 0xff, 2);
+		memcpy((char *)&dst->addr + 12, &src->in4.sin_addr, 4);
+		memcpy(        &dst->port,      &src->in4.sin_port, 2);
+		break;
+	case AF_INET6:
+		memcpy(&dst->addr, &src->in6.sin6_addr, 16);
+		memcpy(&dst->port, &src->in6.sin6_port, 2);
+		break;
+	default:
+		panic("unsupported address family: %d", src->sa.sa_family);
+	}
 }
 
 // Copies a fastd_sockaddr into fastd_inaddr
 static inline void
 inet_to_sock(union fastd_sockaddr *dst, const struct fastd_inaddr *src){
-  if (isIPv4(src)){
-    // zero struct
-    bzero(dst, sizeof(struct sockaddr_in));
+	if (isIPv4(src)){
+		// zero struct
+		bzero(dst, sizeof(struct sockaddr_in));
 
-    dst->in4.sin_len    = sizeof(struct sockaddr_in);
-    dst->in4.sin_family = AF_INET;
-    memcpy(&dst->in4.sin_addr, (char *)&src->addr + 12, 4);
-    memcpy(&dst->in4.sin_port,         &src->port, 2);
-  }else{
-    // zero struct
-    bzero(dst, sizeof(struct sockaddr_in6));
+		dst->in4.sin_len    = sizeof(struct sockaddr_in);
+		dst->in4.sin_family = AF_INET;
+		memcpy(&dst->in4.sin_addr, (char *)&src->addr + 12, 4);
+		memcpy(&dst->in4.sin_port,         &src->port, 2);
+	}else{
+		// zero struct
+		bzero(dst, sizeof(struct sockaddr_in6));
 
-    dst->in6.sin6_len    = sizeof(struct sockaddr_in6);
-    dst->in6.sin6_family = AF_INET6;
-    memcpy(&dst->in6.sin6_addr, &src->addr, 16);
-    memcpy(&dst->in6.sin6_port, &src->port, 2);
-  }
+		dst->in6.sin6_len    = sizeof(struct sockaddr_in6);
+		dst->in6.sin6_family = AF_INET6;
+		memcpy(&dst->in6.sin6_addr, &src->addr, 16);
+		memcpy(&dst->in6.sin6_port, &src->port, 2);
+	}
 }
 
 
@@ -260,14 +255,14 @@ inet_to_sock(union fastd_sockaddr *dst, const struct fastd_inaddr *src){
 static inline void
 fastd_sockaddr_copy(union fastd_sockaddr *dst, const union fastd_sockaddr *src)
 {
-  switch (src->sa.sa_family) {
-  case AF_INET:
-    memcpy(dst, src, sizeof(struct sockaddr_in));
-    break;
-  case AF_INET6:
-    memcpy(dst, src, sizeof(struct sockaddr_in6));
-    break;
-  }
+	switch (src->sa.sa_family) {
+	case AF_INET:
+		memcpy(dst, src, sizeof(struct sockaddr_in));
+		break;
+	case AF_INET6:
+		memcpy(dst, src, sizeof(struct sockaddr_in6));
+		break;
+	}
 }
 
 
@@ -276,24 +271,24 @@ fastd_sockaddr_copy(union fastd_sockaddr *dst, const union fastd_sockaddr *src)
 static inline int
 fastd_sockaddr_equal(const union fastd_sockaddr *a, const union fastd_sockaddr *b)
 {
-  if (a->sa.sa_family != b->sa.sa_family)
-    return 0;
+	if (a->sa.sa_family != b->sa.sa_family)
+		return 0;
 
-  switch (a->sa.sa_family) {
-  case AF_INET:
-    return (
-      a->in4.sin_addr.s_addr == b->in4.sin_addr.s_addr &&
-      a->in4.sin_port == b->in4.sin_port
-    );
-  case AF_INET6:
-    return (
-      IN6_ARE_ADDR_EQUAL (&a->in6.sin6_addr, &b->in6.sin6_addr) &&
-      (a->in6.sin6_port == b->in6.sin6_port) &&
-      (a->in6.sin6_scope_id == 0 || b->in6.sin6_scope_id == 0 || (a->in6.sin6_scope_id == b->in6.sin6_scope_id))
-    );
-  default:
-    return 1;
-  }
+	switch (a->sa.sa_family) {
+	case AF_INET:
+		return (
+			a->in4.sin_addr.s_addr == b->in4.sin_addr.s_addr &&
+			a->in4.sin_port == b->in4.sin_port
+		);
+	case AF_INET6:
+		return (
+			IN6_ARE_ADDR_EQUAL (&a->in6.sin6_addr, &b->in6.sin6_addr) &&
+			(a->in6.sin6_port == b->in6.sin6_port) &&
+			(a->in6.sin6_scope_id == 0 || b->in6.sin6_scope_id == 0 || (a->in6.sin6_scope_id == b->in6.sin6_scope_id))
+		);
+	default:
+		return 1;
+	}
 }
 
 
@@ -505,7 +500,7 @@ out:
 	if (error){
 		free(sock, M_FASTD);
 	}
-  return (error);
+	return (error);
 }
 
 
@@ -515,7 +510,7 @@ fastd_close_socket(union fastd_sockaddr *sa){
 	int error = ENXIO;
 	struct fastd_socket *sock;
 
-  rm_wlock(&fastd_lock);
+	rm_wlock(&fastd_lock);
 
 	LIST_FOREACH(sock, &fastd_sockets_head, list) {
 		if (fastd_sockaddr_equal(sa, &sock->laddr)) {
@@ -527,8 +522,8 @@ fastd_close_socket(union fastd_sockaddr *sa){
 		}
 	}
 
-  rm_wunlock(&fastd_lock);
-  return (error);
+	rm_wunlock(&fastd_lock);
+	return (error);
 }
 
 
@@ -578,7 +573,7 @@ fastd_find_socket_locked(const union fastd_sockaddr *sa){
 
 static void
 fastd_rcv_udp_packet(struct mbuf *m, int offset, struct inpcb *inpcb,
-    const struct sockaddr *sa_src, void *xfso)
+		const struct sockaddr *sa_src, void *xfso)
 {
 	struct rm_priotracker tracker;
 	struct fastd_message *fastd_msg;
@@ -708,57 +703,57 @@ fastd_recv_data(struct mbuf *m, u_int offset, u_int datalen, const union fastd_s
 // Send outgoing control packet via UDP
 static int
 fastd_send_packet(struct uio *uio) {
-  int error;
-  size_t datalen, addrlen;
-  struct fastd_message msg;
-  struct mbuf *m = NULL;
-  struct fastd_socket *sock;
-  union fastd_sockaddr src_addr, dst_addr;
+	int error;
+	size_t datalen, addrlen;
+	struct fastd_message msg;
+	struct mbuf *m = NULL;
+	struct fastd_socket *sock;
+	union fastd_sockaddr src_addr, dst_addr;
 
 
-  addrlen = 2 * sizeof(struct fastd_inaddr);
-  datalen = uio->uio_iov->iov_len - addrlen;
+	addrlen = 2 * sizeof(struct fastd_inaddr);
+	datalen = uio->uio_iov->iov_len - addrlen;
 
-  // Copy addresses from user memory
-  error = uiomove((char *)&msg + sizeof(uint16_t), addrlen, uio);
-  if (error != 0){
-    goto out;
-  }
+	// Copy addresses from user memory
+	error = uiomove((char *)&msg + sizeof(uint16_t), addrlen, uio);
+	if (error != 0){
+		goto out;
+	}
 
-  // Build destination address
-  inet_to_sock(&src_addr, &msg.src);
-  inet_to_sock(&dst_addr, &msg.dst);
+	// Build destination address
+	inet_to_sock(&src_addr, &msg.src);
+	inet_to_sock(&dst_addr, &msg.dst);
 
-  // Find socket by address
-  sock = fastd_find_socket(&src_addr);
-  if (sock == NULL) {
-  	error = EIO;
-    goto out;
-  }
+	// Find socket by address
+	sock = fastd_find_socket(&src_addr);
+	if (sock == NULL) {
+	error = EIO;
+		goto out;
+	}
 
-  // Allocate space for packet
-  m = m_getm(NULL, datalen, M_WAITOK, MT_DATA);
+	// Allocate space for packet
+	m = m_getm(NULL, datalen, M_WAITOK, MT_DATA);
 
-  // Set mbuf current data length
-  m->m_len = m->m_pkthdr.len = datalen;
+	// Set mbuf current data length
+	m->m_len = m->m_pkthdr.len = datalen;
 
-  // Copy payload from user memory
-  error = uiomove(m->m_data, datalen, uio);
-  if (error != 0){
-    goto fail;
-  }
+	// Copy payload from user memory
+	error = uiomove(m->m_data, datalen, uio);
+	if (error != 0){
+		goto fail;
+	}
 
-  // Send packet
-  error = sosend(sock->socket, &dst_addr.sa, NULL, m, NULL, 0, uio->uio_td);
-  if (error != 0){
-    goto fail;
-  }
+	// Send packet
+	error = sosend(sock->socket, &dst_addr.sa, NULL, m, NULL, 0, uio->uio_td);
+	if (error != 0){
+		goto fail;
+	}
 
-  goto out;
+	goto out;
 fail:
-  m_free(m);
+	m_free(m);
 out:
-  return (error);
+	return (error);
 }
 
 
@@ -828,33 +823,33 @@ fastd_ifstart(struct ifnet *ifp __unused)
 static void
 fastd_iface_load()
 {
-  int i;
+	int i;
 
-  for (i = 0; i < FASTD_HASH_SIZE; i++) {
-    LIST_INIT(&fastd_peers[i]);
-  }
+	for (i = 0; i < FASTD_HASH_SIZE; i++) {
+		LIST_INIT(&fastd_peers[i]);
+	}
 
-  rm_init(&fastd_lock, "fastd_lock");
-  fastd_cloner = if_clone_simple(fastdname, fastd_clone_create, fastd_clone_destroy, 0);
+	rm_init(&fastd_lock, "fastd_lock");
+	fastd_cloner = if_clone_simple(fastdname, fastd_clone_create, fastd_clone_destroy, 0);
 }
 
 static void
 fastd_iface_unload()
 {
-  int i;
-  struct fastd_softc *sc;
+	int i;
+	struct fastd_softc *sc;
 
-  if_clone_detach(fastd_cloner);
+	if_clone_detach(fastd_cloner);
 
-  rm_wlock(&fastd_lock);
-  while ((sc = LIST_FIRST(&fastd_ifaces_head)) != NULL) {
-    fastd_destroy(sc);
-  }
-  rm_wunlock(&fastd_lock);
+	rm_wlock(&fastd_lock);
+	while ((sc = LIST_FIRST(&fastd_ifaces_head)) != NULL) {
+		fastd_destroy(sc);
+	}
+	rm_wunlock(&fastd_lock);
 
-  for (i = 0; i < FASTD_HASH_SIZE; i++) {
-    KASSERT(LIST_EMPTY(&fastd_peers[i]), "fastd: list not empty");
-  }
+	for (i = 0; i < FASTD_HASH_SIZE; i++) {
+		KASSERT(LIST_EMPTY(&fastd_peers[i]), "fastd: list not empty");
+	}
 }
 
 static int
@@ -908,41 +903,41 @@ fail:
 static void
 fastd_clone_destroy(struct ifnet *ifp)
 {
-  struct fastd_softc *sc;
-  sc = ifp->if_softc;
+	struct fastd_softc *sc;
+	sc = ifp->if_softc;
 
-  rm_wlock(&fastd_lock);
-  mtx_destroy(&sc->mtx);
-  fastd_remove_peer(sc);
-  fastd_destroy(sc);
-  rm_wunlock(&fastd_lock);
+	rm_wlock(&fastd_lock);
+	mtx_destroy(&sc->mtx);
+	fastd_remove_peer(sc);
+	fastd_destroy(sc);
+	rm_wunlock(&fastd_lock);
 }
 
 // fastd_lock must be locked before
 static void
 fastd_destroy(struct fastd_softc *sc)
 {
-  LIST_REMOVE(sc, fastd_ifaces);
+	LIST_REMOVE(sc, fastd_ifaces);
 
-  bpfdetach(sc->ifp);
-  if_detach(sc->ifp);
-  if_free(sc->ifp);
-  free(sc, M_FASTD);
+	bpfdetach(sc->ifp);
+	if_detach(sc->ifp);
+	if_free(sc->ifp);
+	free(sc, M_FASTD);
 }
 
 static void
 fastd_remove_peer(struct fastd_softc *sc)
 {
-  struct fastd_softc *entry;
-  // Remove from flows
-  LIST_FOREACH(entry, &fastd_peers[FASTD_HASH(sc)], fastd_flow_entry) {
-    if (fastd_sockaddr_equal(&entry->remote, &sc->remote)) {
-      LIST_REMOVE(entry, fastd_flow_entry);
-      break;
-    }
-  }
+	struct fastd_softc *entry;
+	// Remove from flows
+	LIST_FOREACH(entry, &fastd_peers[FASTD_HASH(sc)], fastd_flow_entry) {
+		if (fastd_sockaddr_equal(&entry->remote, &sc->remote)) {
+			LIST_REMOVE(entry, fastd_flow_entry);
+			break;
+		}
+	}
 
-  // Remove from socket
+	// Remove from socket
 	if (sc->socket != NULL) {
 		LIST_REMOVE(sc, fastd_socket_entry);
 		sc->socket = NULL;
@@ -952,25 +947,24 @@ fastd_remove_peer(struct fastd_softc *sc)
 static struct fastd_softc*
 fastd_lookup_peer(const union fastd_sockaddr *addr)
 {
-  struct fastd_softc *entry;
-  LIST_FOREACH(entry, &fastd_peers[FASTD_HASH_ADDR(addr)], fastd_flow_entry) {
-    if (fastd_sockaddr_equal(&entry->remote, addr)) {
-      return entry;
-    }
-  }
+	struct fastd_softc *entry;
+	LIST_FOREACH(entry, &fastd_peers[FASTD_HASH_ADDR(addr)], fastd_flow_entry) {
+		if (fastd_sockaddr_equal(&entry->remote, addr))
+			return entry;
+	}
 
-  return NULL;
+	return NULL;
 }
 
 static void
 fastd_add_peer(struct fastd_softc *sc)
 {
-  if (sc->remote.in4.sin_port > 0){
-    // Add to flows
-    LIST_INSERT_HEAD(&fastd_peers[FASTD_HASH(sc)], sc, fastd_flow_entry);
-  }
+	if (sc->remote.in4.sin_port > 0){
+		// Add to flows
+		LIST_INSERT_HEAD(&fastd_peers[FASTD_HASH(sc)], sc, fastd_flow_entry);
+	}
 
-  if(sc->socket != NULL){
+	if(sc->socket != NULL){
 		// Assign to new socket
 		LIST_INSERT_HEAD(&sc->socket->softc_head, sc, fastd_socket_entry);
 	}
@@ -1002,15 +996,15 @@ fastd_ifinit(struct ifnet *ifp)
 
 // Functions that are called on SIOCGDRVSPEC and SIOCSDRVSPEC
 static const struct fastd_control fastd_control_table[] = {
-  [FASTD_CMD_GET_CONFIG] =
-      { fastd_ctrl_get_config, sizeof(struct iffastdcfg),
-    FASTD_CTRL_FLAG_COPYOUT
-      },
+	[FASTD_CMD_GET_CONFIG] =
+			{ fastd_ctrl_get_config, sizeof(struct iffastdcfg),
+		FASTD_CTRL_FLAG_COPYOUT
+			},
 
-  [FASTD_CMD_SET_REMOTE] =
-      {   fastd_ctrl_set_remote, sizeof(struct iffastdcfg),
-    FASTD_CTRL_FLAG_COPYIN
-      },
+	[FASTD_CMD_SET_REMOTE] =
+			{   fastd_ctrl_set_remote, sizeof(struct iffastdcfg),
+		FASTD_CTRL_FLAG_COPYIN
+			},
 };
 
 static const int fastd_control_table_size = nitems(fastd_control_table);
@@ -1020,16 +1014,16 @@ static const int fastd_control_table_size = nitems(fastd_control_table);
 static int
 fastd_ctrl_get_config(struct fastd_softc *sc, void *arg)
 {
-  struct iffastdcfg *cfg;
+	struct iffastdcfg *cfg;
 
-  printf("fastd_ctrl_get_config()\n");
+	printf("fastd_ctrl_get_config()\n");
 
-  cfg = arg;
-  bzero(cfg, sizeof(*cfg));
+	cfg = arg;
+	bzero(cfg, sizeof(*cfg));
 
-  memcpy(&cfg->remote, &sc->remote, sizeof(union fastd_sockaddr));
+	memcpy(&cfg->remote, &sc->remote, sizeof(union fastd_sockaddr));
 
-  return (0);
+	return (0);
 }
 
 
@@ -1082,102 +1076,101 @@ out:
 static int
 fastd_ioctl_drvspec(struct fastd_softc *sc, struct ifdrv *ifd, int get)
 {
-  const struct fastd_control *vc;
-  struct iffastdcfg args;
-  int out, error;
+	const struct fastd_control *vc;
+	struct iffastdcfg args;
+	int out, error;
 
 
-  if (ifd->ifd_cmd >= fastd_control_table_size){
-    printf("fastd_ioctl_drvspec() invalid command\n");
-    return (EINVAL);
-  }
+	if (ifd->ifd_cmd >= fastd_control_table_size){
+		printf("fastd_ioctl_drvspec() invalid command\n");
+		return (EINVAL);
+	}
 
-  bzero(&args, sizeof(args));
-  vc = &fastd_control_table[ifd->ifd_cmd];
-  out = (vc->fastdc_flags & FASTD_CTRL_FLAG_COPYOUT) != 0;
+	bzero(&args, sizeof(args));
+	vc = &fastd_control_table[ifd->ifd_cmd];
+	out = (vc->fastdc_flags & FASTD_CTRL_FLAG_COPYOUT) != 0;
 
-  if ((get != 0 && out == 0) || (get == 0 && out != 0)){
-    printf("fastd_ioctl_drvspec() invalid flags\n");
-    return (EINVAL);
-  }
+	if ((get != 0 && out == 0) || (get == 0 && out != 0)){
+		printf("fastd_ioctl_drvspec() invalid flags\n");
+		return (EINVAL);
+	}
 
-  if (ifd->ifd_len != vc->fastdc_argsize ||
-      ifd->ifd_len > sizeof(args)){
-    printf("fastd_ioctl_drvspec() invalid argsize given=%lu expected=%d, args=%lu\n", ifd->ifd_len, vc->fastdc_argsize, sizeof(args));
-    return (EINVAL);
-  }
+	if (ifd->ifd_len != vc->fastdc_argsize || ifd->ifd_len > sizeof(args)){
+		printf("fastd_ioctl_drvspec() invalid argsize given=%lu expected=%d, args=%lu\n", ifd->ifd_len, vc->fastdc_argsize, sizeof(args));
+		return (EINVAL);
+	}
 
-  if (vc->fastdc_flags & FASTD_CTRL_FLAG_COPYIN) {
-    error = copyin(ifd->ifd_data, &args, ifd->ifd_len);
-    if (error){
-      printf("fastd_ioctl_drvspec() copyin failed\n");
-      return (error);
-    }
-  }
+	if (vc->fastdc_flags & FASTD_CTRL_FLAG_COPYIN) {
+		error = copyin(ifd->ifd_data, &args, ifd->ifd_len);
+		if (error){
+			printf("fastd_ioctl_drvspec() copyin failed\n");
+			return (error);
+		}
+	}
 
-  error = vc->fastdc_func(sc, &args);
-  if (error)
-    return (error);
+	error = vc->fastdc_func(sc, &args);
+	if (error)
+		return (error);
 
-  if (vc->fastdc_flags & FASTD_CTRL_FLAG_COPYOUT) {
-    error = copyout(&args, ifd->ifd_data, ifd->ifd_len);
-    if (error)
-      return (error);
-  }
+	if (vc->fastdc_flags & FASTD_CTRL_FLAG_COPYOUT) {
+		error = copyout(&args, ifd->ifd_data, ifd->ifd_len);
+		if (error)
+			return (error);
+	}
 
-  return (0);
+	return (0);
 }
 
 
 static int
 fastd_ifioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
 {
-  struct fastd_softc *sc;
-  struct ifdrv *ifd = (struct ifdrv *)data;
-  struct ifreq *ifr = (struct ifreq *)data;
-  struct ifstat *ifs;
-  int error = 0;
+	struct fastd_softc *sc;
+	struct ifdrv *ifd = (struct ifdrv *)data;
+	struct ifreq *ifr = (struct ifreq *)data;
+	struct ifstat *ifs;
+	int error = 0;
 
-  sc = ifp->if_softc;
+	sc = ifp->if_softc;
 
-  switch(cmd) {
-  case SIOCGIFSTATUS:
-    ifs = (struct ifstat *)data;
-    char ip6buf[INET6_ADDRSTRLEN];
-    switch (sc->remote.sa.sa_family) {
-    case AF_INET:
-      sprintf(ifs->ascii + strlen(ifs->ascii),
-            "\tremote port=%d inet4=%s\n", ntohs(sc->remote.in4.sin_port), inet_ntoa(sc->remote.in4.sin_addr));
-      break;
-    case AF_INET6:
-      sprintf(ifs->ascii + strlen(ifs->ascii),
-            "\tremote port=%d inet6=%s\n", ntohs(sc->remote.in6.sin6_port), ip6_sprintf(ip6buf, &sc->remote.in6.sin6_addr));
-      break;
-    }
-    break;
-  case SIOCSIFADDR:
+	switch(cmd) {
+	case SIOCGIFSTATUS:
+		ifs = (struct ifstat *)data;
+		char ip6buf[INET6_ADDRSTRLEN];
+		switch (sc->remote.sa.sa_family) {
+		case AF_INET:
+			sprintf(ifs->ascii + strlen(ifs->ascii),
+			"\tremote port=%d inet4=%s\n", ntohs(sc->remote.in4.sin_port), inet_ntoa(sc->remote.in4.sin_addr));
+			break;
+		case AF_INET6:
+			sprintf(ifs->ascii + strlen(ifs->ascii),
+			"\tremote port=%d inet6=%s\n", ntohs(sc->remote.in6.sin6_port), ip6_sprintf(ip6buf, &sc->remote.in6.sin6_addr));
+			break;
+		}
+		break;
+	case SIOCSIFADDR:
 		fastd_ifinit(ifp);
 		DEBUG(ifp, "address set\n");
-    /*
-     * Everything else is done at a higher level.
-     */
-    break;
-  case SIOCSIFMTU:
-    // Set MTU
-    ifp->if_mtu = ifr->ifr_mtu;
-    break;
-  case SIOCGDRVSPEC:
-  case SIOCSDRVSPEC:
-    printf("SIOCGDRVSPEC/SIOCSDRVSPEC ifname=%s cmd=%lx len=%lu\n", ifd->ifd_name, ifd->ifd_cmd, ifd->ifd_len);
-    error = fastd_ioctl_drvspec(sc, ifd, cmd == SIOCGDRVSPEC);
-    break;
-  case SIOCSIFFLAGS:
-    break;
-  case SIOCADDMULTI:
-  case SIOCDELMULTI:
-    break;
-  default:
-    error = EINVAL;
-  }
-  return (error);
+		/*
+		 * Everything else is done at a higher level.
+		 */
+		break;
+	case SIOCSIFMTU:
+		// Set MTU
+		ifp->if_mtu = ifr->ifr_mtu;
+		break;
+	case SIOCGDRVSPEC:
+	case SIOCSDRVSPEC:
+		printf("SIOCGDRVSPEC/SIOCSDRVSPEC ifname=%s cmd=%lx len=%lu\n", ifd->ifd_name, ifd->ifd_cmd, ifd->ifd_len);
+		error = fastd_ioctl_drvspec(sc, ifd, cmd == SIOCGDRVSPEC);
+		break;
+	case SIOCSIFFLAGS:
+		break;
+	case SIOCADDMULTI:
+	case SIOCDELMULTI:
+		break;
+	default:
+		error = EINVAL;
+	}
+	return (error);
 }
