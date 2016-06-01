@@ -1,4 +1,4 @@
-package main
+package fastd
 
 /*
 #include <netinet/in.h>

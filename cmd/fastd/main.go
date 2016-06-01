@@ -7,13 +7,8 @@ import (
 	"os/signal"
 	"strconv"
 	"syscall"
-)
 
-var (
-	implementations = map[string]ServerFactory{
-		"udp":    NewUDPServer,
-		"kernel": NewKernelServer,
-	}
+	"github.com/corny/fastd/fastd"
 )
 
 func main() {
@@ -44,45 +39,29 @@ func main() {
 			flags.PrintDefaults()
 			os.Exit(1)
 		}
+
+		config := fastd.Config{
+			Bind: []fastd.Sockaddr{{net.ParseIP(listenAddr), uint16(listenPort), 0}},
+		}
 		config.SetServerKey(secret)
 
-		// Initialize other stuff
-		InitPeers()
-
-		// Get implementation
-		impl := implementations[implName]
-		if impl == nil {
-			println("unknown implementation:", impl)
+		srv, err := fastd.NewServer(implName, &config)
+		if err != nil {
+			println("unable to start server:", err)
 			os.Exit(1)
 		}
-
-		// Initialize implementation
-		srv, err := impl([]Sockaddr{{net.ParseIP(listenAddr), uint16(listenPort), 0}})
-		if err != nil {
-			panic(err)
-		}
-
-		// Handle incoming packets
-		go func() {
-			for msg := range srv.Read() {
-				if reply := handlePacket(msg); reply != nil {
-					println("sending reply")
-					srv.Write(reply)
-				}
-			}
-		}()
 
 		// Wait for SIGINT or SIGTERM
 		sigs := make(chan os.Signal, 1)
 		signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 		<-sigs
 
-		srv.Close()
+		srv.Stop()
 	case "remote":
 		port, _ := strconv.Atoi(args[2])
-		SetRemote(args[0], &Sockaddr{IP: net.ParseIP(args[1]), Port: uint16(port)})
+		fastd.SetRemote(args[0], &fastd.Sockaddr{IP: net.ParseIP(args[1]), Port: uint16(port)})
 	case "addr":
-		err := SetAddr(args[0], net.ParseIP(args[1]), net.ParseIP(args[2]))
+		err := fastd.SetAddr(args[0], net.ParseIP(args[1]), net.ParseIP(args[2]))
 		if err != nil {
 			println(err.Error())
 			os.Exit(1)

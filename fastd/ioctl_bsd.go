@@ -1,6 +1,6 @@
 // source: https://github.com/kr/pty/blob/master/ioctl_bsd.go
 
-package main
+package fastd
 
 // from <sys/ioccom.h>
 const (

@@ -1,4 +1,4 @@
-package main
+package fastd
 
 /*
 #cgo pkg-config: libuecc
@@ -98,10 +98,10 @@ func unpackKey(key []byte) *C.ecc_25519_work_t {
 	return &unpacked
 }
 
-func (peer *Peer) makeSharedHandshakeKey() bool {
+func (peer *Peer) makeSharedHandshakeKey(serverKey *KeyPair) bool {
 
 	A := peer.PublicKey
-	B := config.serverKeys.public[:]
+	B := serverKey.public[:]
 	X := peer.peerHandshakeKey
 	Y := peer.ourHandshakeKey.public[:]
 
@@ -125,7 +125,7 @@ func (peer *Peer) makeSharedHandshakeKey() bool {
 	var work C.ecc_25519_work_t
 	var eb, eccServerKeySecret, eccHandshakeKeySecret, eccSigma C.ecc_int256_t
 
-	copy(eccServerKeySecret[:], config.serverKeys.secret[:])
+	copy(eccServerKeySecret[:], serverKey.secret[:])
 	copy(eccHandshakeKeySecret[:], peer.ourHandshakeKey.secret[:])
 
 	C.ecc_25519_gf_mult(&eb, &e, &eccServerKeySecret)

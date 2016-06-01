@@ -1,4 +1,4 @@
-package main
+package fastd
 
 import (
 	"bytes"
@@ -7,7 +7,7 @@ import (
 	"reflect"
 )
 
-func handlePacket(msg *Message) (reply *Message) {
+func (srv *Server) handlePacket(msg *Message) (reply *Message) {
 	records := msg.Records
 
 	log.Printf("received handshake from %s[%d] using fastd %s", msg.Src.IP.String(), msg.Src.Port, records[RECORD_VERSION_NAME])
@@ -29,7 +29,7 @@ func handlePacket(msg *Message) (reply *Message) {
 		return
 	}
 
-	if !bytes.Equal(recipientKey, config.serverKeys.public[:]) {
+	if !bytes.Equal(recipientKey, srv.config.serverKeys.public[:]) {
 		log.Println("recipient key invalid")
 		reply.SetError(REPLY_UNACCEPTABLE_VALUE, RECORD_RECIPIENT_KEY)
 		return
@@ -47,11 +47,11 @@ func handlePacket(msg *Message) (reply *Message) {
 		return
 	}
 
-	peer := GetPeer(msg.Src)
+	peer := srv.GetPeer(msg.Src)
 	peer.PublicKey = senderKey
 	peer.peerHandshakeKey = senderHandshakeKey
 
-	if !peer.makeSharedHandshakeKey() {
+	if !peer.makeSharedHandshakeKey(srv.config.serverKeys) {
 		log.Println("unable to make shared handshake key")
 		return nil
 	}
@@ -61,7 +61,7 @@ func handlePacket(msg *Message) (reply *Message) {
 	reply.Records[RECORD_METHOD_LIST] = []byte("null")
 	reply.Records[RECORD_VERSION_NAME] = []byte("v18")
 	reply.Records[RECORD_MTU] = records[RECORD_MTU]
-	reply.Records[RECORD_SENDER_KEY] = config.serverKeys.public[:]
+	reply.Records[RECORD_SENDER_KEY] = srv.config.serverKeys.public[:]
 	reply.Records[RECORD_SENDER_HANDSHAKE_KEY] = peer.ourHandshakeKey.public[:]
 	reply.Records[RECORD_RECIPIENT_KEY] = senderKey
 	reply.Records[RECORD_RECIPIENT_HANDSHAKE_KEY] = senderHandshakeKey
@@ -74,12 +74,12 @@ func handlePacket(msg *Message) (reply *Message) {
 	t := val[0]
 	switch t {
 	case 1:
-		if !verifyPeer(peer) {
+		if !srv.verifyPeer(peer) {
 			return nil
 		}
 	case 3:
 		msg.SignKey = peer.sharedKey
-		if !handleFinishHandshake(msg, reply, peer) {
+		if !srv.handleFinishHandshake(msg, reply, peer) {
 			return nil
 		}
 	default:
@@ -89,7 +89,7 @@ func handlePacket(msg *Message) (reply *Message) {
 	return
 }
 
-func handleFinishHandshake(msg *Message, reply *Message, peer *Peer) bool {
+func (srv *Server) handleFinishHandshake(msg *Message, reply *Message, peer *Peer) bool {
 	methodName := msg.Records[RECORD_METHOD_NAME]
 
 	if methodName == nil {
@@ -108,7 +108,7 @@ func handleFinishHandshake(msg *Message, reply *Message, peer *Peer) bool {
 		return false
 	}
 
-	if !establishPeer(peer) {
+	if !srv.establishPeer(peer) {
 		return false
 	}
 
@@ -117,8 +117,8 @@ func handleFinishHandshake(msg *Message, reply *Message, peer *Peer) bool {
 	peer.peerHandshakeKey = nil
 
 	peer.Ifname = CloneIface("fastd")
-	SetRemote(peer.Ifname, peer.Remote)
 
+	SetRemote(peer.Ifname, peer.Remote)
 	peer.SetAddresses(net.ParseIP("192.168.8.0"), net.ParseIP("192.168.8.1"))
 	peer.SetAddresses(net.ParseIP("fe80::1"), net.ParseIP("fe80::2"))
 

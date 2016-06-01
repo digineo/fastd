@@ -1,4 +1,4 @@
-package main
+package fastd
 
 import (
 	"fmt"
@@ -18,7 +18,7 @@ type UDPConn struct {
 	conn *net.UDPConn
 }
 
-func NewUDPServer(addresses []Sockaddr) (Server, error) {
+func NewUDPServer(addresses []Sockaddr) (ServerImpl, error) {
 
 	srv := &UDPServer{
 		recv: make(chan *Message, 10),

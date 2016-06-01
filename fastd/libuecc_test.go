@@ -1,4 +1,4 @@
-package main
+package fastd
 
 import (
 	"encoding/hex"
@@ -28,6 +28,7 @@ func TestNewKeyPair(t *testing.T) {
 
 func TestMakeSharedHandshakeKey(t *testing.T) {
 	assert := assert.New(t)
+	config := Config{}
 	config.SetServerKey("800e8ff23adcc5df5f6b911581667821ebecf1ecd95b10b6b5f92f4ebef7704c")
 	handshakeKey := NewKeyPair(MustDecodeString("a03b6ddf38b693dde2cbefd669ace99c169ca11eae097fb144c5ca9db1cfd176"))
 
@@ -37,7 +38,7 @@ func TestMakeSharedHandshakeKey(t *testing.T) {
 		ourHandshakeKey:  handshakeKey,
 	}
 
-	assert.True(peer.makeSharedHandshakeKey())
+	assert.True(peer.makeSharedHandshakeKey(config.serverKeys))
 	assert.Equal("98a840f7d3845024b6cae090d86eeb72e2607a84ce8ee6ac25639d27e9696596", hex.EncodeToString(peer.sharedKey))
 }
 

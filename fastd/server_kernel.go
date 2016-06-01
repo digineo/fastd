@@ -1,4 +1,4 @@
-package main
+package fastd
 
 import (
 	"fmt"
@@ -35,7 +35,7 @@ type KernelServer struct {
 	addresses []Sockaddr
 }
 
-func NewKernelServer(addresses []Sockaddr) (Server, error) {
+func NewKernelServer(addresses []Sockaddr) (ServerImpl, error) {
 	dev, err := os.OpenFile(DevicePath, os.O_RDWR, 0644)
 	if err != nil {
 		return nil, err
