@@ -40,7 +40,7 @@ mask128(struct sockaddr_in6 *sa){
 }
 
 int
-remove_alias4(char* ifname)
+remove_addr4(char* ifname)
 {
 	struct ifreq req;
 	bzero(&req, sizeof(req));
@@ -50,7 +50,7 @@ remove_alias4(char* ifname)
 }
 
 int
-remove_alias6(char* ifname, struct sockaddr_storage *addr)
+remove_addr6(char* ifname, struct sockaddr_storage *addr)
 {
 	struct in6_ifreq req;
 	bzero(&req, sizeof(req));
@@ -61,7 +61,7 @@ remove_alias6(char* ifname, struct sockaddr_storage *addr)
 }
 
 int
-add_alias4(char* ifname, struct sockaddr_storage *addr, struct sockaddr_storage *dstaddr)
+add_addr4(char* ifname, struct sockaddr_storage *addr, struct sockaddr_storage *dstaddr)
 {
 	struct ifaliasreq req;
 	bzero(&req, sizeof(req));
@@ -75,7 +75,7 @@ add_alias4(char* ifname, struct sockaddr_storage *addr, struct sockaddr_storage 
 }
 
 int
-add_alias6(char* ifname, struct sockaddr_storage *addr, struct sockaddr_storage *dstaddr)
+add_addr6(char* ifname, struct sockaddr_storage *addr, struct sockaddr_storage *dstaddr)
 {
 	struct in6_aliasreq req;
 	bzero(&req, sizeof(req));
