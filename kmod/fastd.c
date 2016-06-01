@@ -121,6 +121,7 @@ struct fastdudphdr {
 
 struct fastd_socket {
   LIST_ENTRY(fastd_socket) list;
+  LIST_HEAD(,fastd_softc) softc_head; // List of all assigned interfaces
   struct socket        *socket;
   union fastd_sockaddr  laddr;
 };
@@ -136,8 +137,10 @@ struct fastd_softc {
 	// lists are protected by global fastd_lock
 	LIST_ENTRY(fastd_softc) fastd_ifaces; // list of all interfaces
 	LIST_ENTRY(fastd_softc) fastd_flow_entry; // entry in flow table
+	LIST_ENTRY(fastd_softc) fastd_socket_entry; // list of softc for a socket
 
 	struct ifnet *ifp;  /* the interface */
+	struct fastd_socket *socket; /* socket for outgoing packets */
 	union fastd_sockaddr remote;  /* remote ip address and port */
 	struct mtx mtx; /* protect mutable softc fields */
 };
@@ -154,7 +157,8 @@ struct fastd_softc_head fastd_peers[FASTD_HASH_SIZE];
 static int fastd_bind_socket(union fastd_sockaddr*);
 static int fastd_close_socket(union fastd_sockaddr*);
 static void fastd_close_sockets();
-static struct fastd_socket* fastd_find_socket(union fastd_sockaddr*);
+static struct fastd_socket* fastd_find_socket(const union fastd_sockaddr*);
+static struct fastd_socket* fastd_find_socket_locked(const union fastd_sockaddr*);
 static int fastd_send_packet(struct uio *uio);
 
 static void fastd_rcv_udp_packet(struct mbuf *, int, struct inpcb *, const struct sockaddr *, void *);
@@ -486,6 +490,9 @@ fastd_bind_socket(union fastd_sockaddr *sa){
 		goto fail;
 	}
 
+	// Initialize list of assigned interfaces
+	LIST_INIT(&sock->softc_head);
+
 	rm_wlock(&fastd_lock);
 	LIST_INSERT_HEAD(&fastd_sockets_head, sock, list);
 	rm_wunlock(&fastd_lock);
@@ -544,30 +551,36 @@ fastd_close_sockets(union fastd_sockaddr *laddr){
 
 // Finds a socket by sockaddr
 static struct fastd_socket *
-fastd_find_socket(union fastd_sockaddr *sa){
-	struct fastd_socket *sock;
+fastd_find_socket(const union fastd_sockaddr *sa){
 	struct rm_priotracker tracker;
+	struct fastd_socket *sock;
 
 	rm_rlock(&fastd_lock, &tracker);
-
-	LIST_FOREACH(sock, &fastd_sockets_head, list) {
-		if (fastd_sockaddr_equal(sa, &sock->laddr)) {
-			goto out;
-		}
-	}
-
-	// no socket found
-	sock = NULL;
-
-out:
+	sock = fastd_find_socket_locked(sa);
 	rm_runlock(&fastd_lock, &tracker);
 	return sock;
+}
+
+// Finds a socket by sockaddr
+static struct fastd_socket *
+fastd_find_socket_locked(const union fastd_sockaddr *sa){
+	struct fastd_socket *sock;
+
+	LIST_FOREACH(sock, &fastd_sockets_head, list) {
+		//if (fastd_sockaddr_equal(sa, &sock->laddr))
+
+		// Find by sa_family
+		if (sa->sa.sa_family == sock->laddr.sa.sa_family)
+			return sock;
+	}
+	return NULL;
 }
 
 static void
 fastd_rcv_udp_packet(struct mbuf *m, int offset, struct inpcb *inpcb,
     const struct sockaddr *sa_src, void *xfso)
-	{
+{
+	struct rm_priotracker tracker;
 	struct fastd_message *fastd_msg;
 	struct fastd_softc *sc;
 	struct fastd_socket *fso;
@@ -609,7 +622,7 @@ fastd_rcv_udp_packet(struct mbuf *m, int offset, struct inpcb *inpcb,
 		KNOTE_UNLOCKED(&fastd_rsel.si_note, 0);
 		break;
 	case FASTD_HDR_DATA:
-		rm_wlock(&fastd_lock);
+		rm_rlock(&fastd_lock, &tracker);
 		sc = fastd_lookup_peer((const union fastd_sockaddr *)sa_src);
 		if (sc == NULL) {
 			printf("fastd: unable to find peer\n");
@@ -646,11 +659,15 @@ fastd_rcv_udp_packet(struct mbuf *m, int offset, struct inpcb *inpcb,
 				af = AF_INET6;
 				break;
 			default:
+				if_inc_counter(sc->ifp, IFCOUNTER_IERRORS, 1);
 				DEBUG(sc->ifp, "unknown ip version: %02x\n", tp );
 				goto unlock;
 			}
 
+			// Trim ip+udp+fastd headers
 			m_adj(m, offset+1);
+
+			// Assign receiving interface
 			m->m_pkthdr.rcvif = sc->ifp;
 
 			// Pass to Berkeley Packet Filter
@@ -662,7 +679,7 @@ fastd_rcv_udp_packet(struct mbuf *m, int offset, struct inpcb *inpcb,
 			m = NULL;
 		}
 unlock:
-		rm_wunlock(&fastd_lock);
+		rm_runlock(&fastd_lock, &tracker);
 		break;
 	default:
 		printf("invalid fastd-packet type=%02X datalen=%d\n", msg_type, datalen);
@@ -735,7 +752,6 @@ fastd_output(struct ifnet *ifp, struct mbuf *m, const struct sockaddr *dst, stru
 {
 	struct rm_priotracker tracker;
 	struct fastd_softc *sc;
-	struct fastd_socket *sock;
 	u_int32_t af;
 	int len, error;
 
@@ -765,10 +781,7 @@ fastd_output(struct ifnet *ifp, struct mbuf *m, const struct sockaddr *dst, stru
 	}
 	m->m_data[0] = FASTD_HDR_DATA;
 
-	// TODO fixme
-	sock = LIST_FIRST(&fastd_sockets_head);
-
-	error = sosend(sock->socket, (struct sockaddr *)&sc->remote, NULL, m, NULL, 0, curthread);
+	error = sosend(sc->socket->socket, (struct sockaddr *)&sc->remote, NULL, m, NULL, 0, curthread);
 	if (!error) {
 		// sosend was successful and already freed the mbuf
 		m = NULL;
@@ -838,7 +851,7 @@ fastd_clone_create(struct if_clone *ifc, int unit, caddr_t params)
 
 	sc = malloc(sizeof(*sc), M_FASTD, M_WAITOK | M_ZERO);
 
-	if (params != 0) {
+	if (params != NULL) {
 		// TODO
 	}
 
@@ -913,6 +926,12 @@ fastd_remove_peer(struct fastd_softc *sc)
       break;
     }
   }
+
+  // Remove from socket
+	if (sc->socket != NULL) {
+		LIST_REMOVE(sc, fastd_socket_entry);
+		sc->socket = NULL;
+	}
 }
 
 static struct fastd_softc*
@@ -935,6 +954,11 @@ fastd_add_peer(struct fastd_softc *sc)
     // Add to flows
     LIST_INSERT_HEAD(&fastd_peers[FASTD_HASH(sc)], sc, fastd_flow_entry);
   }
+
+  if(sc->socket != NULL){
+		// Assign to new socket
+		LIST_INSERT_HEAD(&sc->socket->softc_head, sc, fastd_socket_entry);
+	}
 }
 
 
@@ -999,6 +1023,7 @@ fastd_ctrl_set_remote(struct fastd_softc *sc, void *arg)
 {
 	struct iffastdcfg *cfg = arg;
 	struct fastd_softc *other;
+	struct fastd_socket *socket;
 	union fastd_sockaddr sa;
 	int error = 0;
 	inet_to_sock(&sa, &cfg->remote);
@@ -1007,7 +1032,19 @@ fastd_ctrl_set_remote(struct fastd_softc *sc, void *arg)
 
 	// address and port already taken?
 	other = fastd_lookup_peer(&sa);
-	if (other != NULL && other != sc) {
+	if (other != NULL) {
+		if (other != sc) {
+			error = EADDRNOTAVAIL;
+			goto out;
+		} else if (fastd_sockaddr_equal(&other->remote, &sa)) {
+			// peer has already the address
+			goto out;
+		}
+	}
+
+	// Find socket
+	socket = fastd_find_socket_locked(&sa);
+	if (socket == NULL) {
 		error = EADDRNOTAVAIL;
 		goto out;
 	}
@@ -1015,6 +1052,7 @@ fastd_ctrl_set_remote(struct fastd_softc *sc, void *arg)
 	// Reconfigure
 	fastd_remove_peer(sc);
 	fastd_sockaddr_copy(&sc->remote, &sa);
+	sc->socket = socket;
 	fastd_add_peer(sc);
 
 	// Ready to deliver packets
