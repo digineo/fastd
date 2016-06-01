@@ -14,8 +14,9 @@ import (
 )
 
 const (
-	FASTD_PARAM_GET = iota
-	FASTD_PARAM_WITH_REMOTE
+	FASTD_PARAM_GET_CONFIG = iota
+	FASTD_PARAM_SET_REMOTE
+	FASTD_PARAM_GET_STATS
 )
 
 var (
@@ -26,6 +27,11 @@ var (
 
 type ifconfigParam struct {
 	remote [18]byte
+}
+
+type IfaceStats struct {
+	ipackets uint64
+	opackets uint64
 }
 
 func newControlFd(af int) int {
@@ -42,15 +48,27 @@ func newControlFd(af int) int {
 
 // Set remote address
 func SetRemote(ifname string, remote *Sockaddr) error {
-
 	param := &ifconfigParam{
 		remote: remote.RawFixed(),
 	}
 
+	return ioctlIfdrv(ifname, ioctl_SET_DRV_SPEC, FASTD_PARAM_SET_REMOTE, unsafe.Pointer(param), unsafe.Sizeof(*param))
+}
+
+// Get interface counter
+func GetStats(ifname string) (*IfaceStats, error) {
+	param := &IfaceStats{}
+
+	err := ioctlIfdrv(ifname, ioctl_GET_DRV_SPEC, FASTD_PARAM_GET_STATS, unsafe.Pointer(param), unsafe.Sizeof(*param))
+
+	return param, err
+}
+
+func ioctlIfdrv(ifname string, ioctlCmd uintptr, ifdCmd uintptr, data unsafe.Pointer, len uintptr) error {
 	ifd := &C.struct_ifdrv{
-		ifd_cmd:  FASTD_PARAM_WITH_REMOTE,
-		ifd_data: unsafe.Pointer(param),
-		ifd_len:  C.size_t(unsafe.Sizeof(*param)),
+		ifd_cmd:  C.ulong(ifdCmd),
+		ifd_data: unsafe.Pointer(data),
+		ifd_len:  C.size_t(len),
 	}
 
 	// copy ifname
@@ -58,7 +76,7 @@ func SetRemote(ifname string, remote *Sockaddr) error {
 		ifd.ifd_name[i] = C.char(c)
 	}
 
-	return ioctl(uintptr(controlFd4), ioctl_SET_DRV_SPEC, uintptr(unsafe.Pointer(ifd)))
+	return ioctl(uintptr(controlFd4), ioctlCmd, uintptr(unsafe.Pointer(ifd)))
 }
 
 func CloneIface(name string) string {

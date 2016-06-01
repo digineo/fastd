@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"net"
 	"os"
 	"os/signal"
@@ -66,6 +67,14 @@ func main() {
 			println(err.Error())
 			os.Exit(1)
 		}
+	case "ifstat":
+		if stats, err := fastd.GetStats(args[0]); err != nil {
+			println(err.Error())
+			os.Exit(1)
+		} else {
+			fmt.Printf("%+v", stats)
+		}
+
 	default:
 		println("invalid command:", cmd)
 		os.Exit(1)

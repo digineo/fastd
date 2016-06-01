@@ -57,12 +57,18 @@
 // SIOCGDRVSPEC/SIOCSDRVSPEC commands on fastd interface
 #define FASTD_CMD_GET_CONFIG	0
 #define FASTD_CMD_SET_REMOTE	1
+#define FASTD_CMD_GET_STATS	2
 
 #define satoconstsin(sa)  ((const struct sockaddr_in *)(sa))
 #define satoconstsin6(sa) ((const struct sockaddr_in6 *)(sa))
 
 struct iffastdcfg {
 	struct fastd_inaddr	remote;
+};
+
+struct iffastdstats {
+	u_long	ipackets;
+	u_long	opackets;
 };
 
 static void fastd_iface_load(void);
@@ -182,6 +188,7 @@ static int  fastd_sockaddr_equal(const union fastd_sockaddr *, const union fastd
 
 static int  fastd_ctrl_get_config(struct fastd_softc *, void *);
 static int  fastd_ctrl_set_remote(struct fastd_softc *, void *);
+static int  fastd_ctrl_get_stats(struct fastd_softc *, void *);
 
 struct fastd_control {
 	int (*fastdc_func)(struct fastd_softc *, void *);
@@ -1005,6 +1012,11 @@ static const struct fastd_control fastd_control_table[] = {
 			{   fastd_ctrl_set_remote, sizeof(struct iffastdcfg),
 		FASTD_CTRL_FLAG_COPYIN
 			},
+
+	[FASTD_CMD_GET_STATS] =
+			{   fastd_ctrl_get_stats, sizeof(struct iffastdstats),
+		FASTD_CTRL_FLAG_COPYOUT
+			},
 };
 
 static const int fastd_control_table_size = nitems(fastd_control_table);
@@ -1070,6 +1082,17 @@ fastd_ctrl_set_remote(struct fastd_softc *sc, void *arg)
 out:
 	rm_wunlock(&fastd_lock);
 	return (error);
+}
+
+static int
+fastd_ctrl_get_stats(struct fastd_softc *sc, void *arg)
+{
+	struct iffastdstats *stats = arg;
+
+	stats->ipackets = sc->ifp->if_ipackets;
+	stats->opackets = sc->ifp->if_opackets;
+
+	return (0);
 }
 
 
