@@ -8,6 +8,7 @@ import "C"
 
 import (
 	"log"
+	"net"
 	"syscall"
 	"unsafe"
 )
@@ -69,31 +70,27 @@ func DestroyIface(name string) string {
 	return ioctl_ifreq(ioctl_SIOCIFDESTROY, name)
 }
 
-func SetAlias(ifname string, addr, dstaddr *Sockaddr) (err error) {
+func SetAddr(ifname string, addr, dstaddr net.IP) (err error) {
 	var res uintptr
 	name := C.CString(ifname)
-	defer C.free(unsafe.Pointer(name))
 
-	if isIPv4(addr.IP) {
-		res = uintptr(C.remove_alias4(name))
-		if res != 0 {
-			log.Println("alias4_remove:", syscall.Errno(res))
-		}
+	addr_sa := Sockaddr{IP: addr}
+	dstaddr_sa := Sockaddr{IP: dstaddr}
 
-		res = uintptr(C.add_alias4(name, addr.Native(), dstaddr.Native()))
+	if isIPv4(addr) {
+		C.remove_addr4(name)
+		res = uintptr(C.add_addr4(name, addr_sa.Native(), dstaddr_sa.Native()))
 
 	} else {
-		res = uintptr(C.remove_alias6(name, addr.Native()))
-		if res != 0 {
-			log.Println("alias6_remove:", syscall.Errno(res))
-		}
+		C.remove_addr6(name, addr_sa.Native())
 
-		res = uintptr(C.add_alias6(name, addr.Native(), dstaddr.Native()))
+		res = uintptr(C.add_addr6(name, addr_sa.Native(), dstaddr_sa.Native()))
 	}
 
 	if res != 0 {
 		err = syscall.Errno(res)
 	}
+	C.free(unsafe.Pointer(name))
 	return
 }
 

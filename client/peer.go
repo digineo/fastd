@@ -1,6 +1,7 @@
 package main
 
 import (
+	"net"
 	"sync"
 	"time"
 )
@@ -66,4 +67,9 @@ func verifyPeer(peer *Peer) bool {
 
 func establishPeer(peer *Peer) bool {
 	return peer.handshakeTimeout.After(time.Now()) && VerifyPeer(peer)
+}
+
+// Set local and destination address for the PTP interface
+func (peer *Peer) SetAddresses(addr, dstaddr net.IP) error {
+	return SetAddr(peer.Ifname, addr, dstaddr)
 }
