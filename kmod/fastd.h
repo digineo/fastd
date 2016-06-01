@@ -17,8 +17,8 @@ union fastd_sockaddr {
   struct sockaddr_in6 in6;
 };
 
-#define FASTD_HDR_CTRL  0x01
-#define FASTD_HDR_DATA  0x02
+#define FASTD_HDR_HANDSHAKE	0x01
+#define FASTD_HDR_DATA		0x02
 
 struct fastd_inaddr {
   char      addr[16]; // IPv4/IPv6 address

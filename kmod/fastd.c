@@ -162,7 +162,7 @@ static struct fastd_socket* fastd_find_socket_locked(const union fastd_sockaddr*
 static int fastd_send_packet(struct uio *uio);
 
 static void fastd_rcv_udp_packet(struct mbuf *, int, struct inpcb *, const struct sockaddr *, void *);
-
+static void fastd_recv_data(struct mbuf *, u_int, u_int, const union fastd_sockaddr *, struct fastd_socket *);
 
 static struct rmlock fastd_lock;
 static const char fastdname[] = "fastd";
@@ -582,11 +582,10 @@ fastd_rcv_udp_packet(struct mbuf *m, int offset, struct inpcb *inpcb,
 {
 	struct rm_priotracker tracker;
 	struct fastd_message *fastd_msg;
-	struct fastd_softc *sc;
 	struct fastd_socket *fso;
 	char msg_type;
+	int error;
 	u_int datalen;
-	int isr, af;
 
 	// Ensure packet header exists
 	M_ASSERTPKTHDR(m);
@@ -597,16 +596,21 @@ fastd_rcv_udp_packet(struct mbuf *m, int offset, struct inpcb *inpcb,
 
 	// drop UDP packets with less than 1 byte payload
 	if (datalen < 1)
-		goto out;
+		goto free;
 
 	m_copydata(m, offset, 1, (caddr_t) &msg_type);
+	rm_rlock(&fastd_lock, &tracker);
 
 	switch (msg_type){
-	case FASTD_HDR_CTRL:
+	case FASTD_HDR_HANDSHAKE:
+		// Header too short?
 		if (datalen < 4)
-			goto out;
+			goto free;
 
-		fastd_msg = malloc(sizeof(struct fastd_message) + datalen, M_FASTD, M_WAITOK);
+		// Allocate memory
+		fastd_msg = malloc(sizeof(*fastd_msg) + datalen, M_FASTD, M_NOWAIT);
+		if (fastd_msg == NULL)
+			goto free;
 		fastd_msg->datalen = datalen;
 
 		// Copy addresses
@@ -616,78 +620,89 @@ fastd_rcv_udp_packet(struct mbuf *m, int offset, struct inpcb *inpcb,
 		// Copy fastd packet
 		m_copydata(m, offset, datalen, (caddr_t) &fastd_msg->data);
 
-		// Store into ringbuffer to character device
-		buf_ring_enqueue(fastd_msgbuf, fastd_msg);
-		selwakeup(&fastd_rsel);
-		KNOTE_UNLOCKED(&fastd_rsel.si_note, 0);
+		// Store into ringbuffer of character device
+		error = buf_ring_enqueue(fastd_msgbuf, fastd_msg);
+		if (error == ENOBUFS){
+			printf("fastd: no buffer for handshake packets available\n");
+			free(fastd_msg, M_FASTD);
+		} else {
+			selwakeup(&fastd_rsel);
+			KNOTE_UNLOCKED(&fastd_rsel.si_note, 0);
+		}
+
 		break;
 	case FASTD_HDR_DATA:
-		rm_rlock(&fastd_lock, &tracker);
-		sc = fastd_lookup_peer((const union fastd_sockaddr *)sa_src);
-		if (sc == NULL) {
-			printf("fastd: unable to find peer\n");
-			// No interface found
-			goto unlock;
-		}
-
-		DEBUG(sc->ifp, "data packet received bytes=%d\n", datalen);
-
-		if (datalen == 1){
-			// Keepalive packet
-			m->m_len = m->m_pkthdr.len = 1;
-			m->m_data[0] = FASTD_HDR_DATA;
-			int error = sosend(fso->socket, (struct sockaddr *)sa_src, NULL, m, NULL, 0, curthread);
-			if (error)
-				DEBUG(sc->ifp, "fastd keepalive response failed: %d\n", error);
-			else
-				m = NULL;
-		} else {
-			// forward to network interface
-
-			/* Get the IP version number. */
-			u_int8_t tp;
-			m_copydata(m, offset+1, 1, &tp);
-			tp = (tp >> 4) & 0xff;
-
-			switch (tp) {
-			case IPVERSION:
-				isr = NETISR_IP;
-				af = AF_INET;
-				break;
-			case (IPV6_VERSION >> 4):
-				isr = NETISR_IPV6;
-				af = AF_INET6;
-				break;
-			default:
-				if_inc_counter(sc->ifp, IFCOUNTER_IERRORS, 1);
-				DEBUG(sc->ifp, "unknown ip version: %02x\n", tp );
-				goto unlock;
-			}
-
-			// Trim ip+udp+fastd headers
-			m_adj(m, offset+1);
-
-			// Assign receiving interface
-			m->m_pkthdr.rcvif = sc->ifp;
-
-			// Pass to Berkeley Packet Filter
-			BPF_MTAP2(sc->ifp, &af, sizeof(af), m);
-
-			if_inc_counter(sc->ifp, IFCOUNTER_IPACKETS, 1);
-			if_inc_counter(sc->ifp, IFCOUNTER_IBYTES, m->m_pkthdr.len);
-			netisr_dispatch(isr, m);
-			m = NULL;
-		}
-unlock:
-		rm_runlock(&fastd_lock, &tracker);
-		break;
+		fastd_recv_data(m, offset, datalen, (const union fastd_sockaddr *)sa_src, fso);
+		goto unlock;
 	default:
-		printf("invalid fastd-packet type=%02X datalen=%d\n", msg_type, datalen);
+		printf("fastd: invalid packet type=%02X datalen=%d\n", msg_type, datalen);
+	}
+free:
+	m_freem(m);
+unlock:
+	rm_runlock(&fastd_lock, &tracker);
+}
+
+static void
+fastd_recv_data(struct mbuf *m, u_int offset, u_int datalen, const union fastd_sockaddr *sa_src, struct fastd_socket *socket)
+{
+	struct fastd_softc *sc;
+	int isr, af;
+
+	sc = fastd_lookup_peer(sa_src);
+	if (sc == NULL) {
+		m_freem(m);
+		printf("fastd: unable to find peer\n");
+		return;
 	}
 
-out:
-	if (m != NULL)
+	if (datalen == 1){
+		// Keepalive packet
+		m->m_len = m->m_pkthdr.len = 1;
+		m->m_data[0] = FASTD_HDR_DATA;
+		int error = sosend(socket->socket, (struct sockaddr *)sa_src, NULL, m, NULL, 0, curthread);
+		if (error){
+			m_freem(m);
+			DEBUG(sc->ifp, "fastd keepalive response failed: %d\n", error);
+		}
+		return;
+	}
+
+	// Get the IP version number
+	u_int8_t tp;
+	m_copydata(m, offset+1, 1, &tp);
+	tp = (tp >> 4) & 0xff;
+
+	switch (tp) {
+	case IPVERSION:
+		isr = NETISR_IP;
+		af = AF_INET;
+		break;
+	case (IPV6_VERSION >> 4):
+		isr = NETISR_IPV6;
+		af = AF_INET6;
+		break;
+	default:
+		if_inc_counter(sc->ifp, IFCOUNTER_IERRORS, 1);
+		DEBUG(sc->ifp, "unknown ip version: %02x\n", tp );
 		m_freem(m);
+		return;
+	}
+
+	// Trim ip+udp+fastd headers
+	m_adj(m, offset+1);
+
+	// Assign receiving interface
+	m->m_pkthdr.rcvif = sc->ifp;
+
+	// Pass to Berkeley Packet Filter
+	BPF_MTAP2(sc->ifp, &af, sizeof(af), m);
+
+	// Update counters
+	if_inc_counter(sc->ifp, IFCOUNTER_IPACKETS, 1);
+	if_inc_counter(sc->ifp, IFCOUNTER_IBYTES, m->m_pkthdr.len);
+
+	netisr_dispatch(isr, m);
 }
 
 // Send outgoing control packet via UDP
