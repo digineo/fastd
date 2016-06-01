@@ -7,9 +7,7 @@ package main
 import "C"
 
 import (
-	"bytes"
 	"log"
-	"net"
 	"syscall"
 	"unsafe"
 )
@@ -23,9 +21,6 @@ var (
 	// File descriptor for ioctl on fastd network interfaces
 	controlFd4 = newControlFd(syscall.AF_INET)
 	controlFd6 = newControlFd(syscall.AF_INET6)
-
-	tunnelMaskIPv4 = net.IPv4(255, 255, 255, 255)
-	tunnelMaskIPv6 = net.IP(bytes.Repeat([]byte{255}, 16))
 )
 
 type ifconfigParam struct {
@@ -80,25 +75,20 @@ func SetAlias(ifname string, addr, dstaddr *Sockaddr) (err error) {
 	defer C.free(unsafe.Pointer(name))
 
 	if isIPv4(addr.IP) {
-		mask := Sockaddr{IP: tunnelMaskIPv4}
-
 		res = uintptr(C.remove_alias4(name))
 		if res != 0 {
 			log.Println("alias4_remove:", syscall.Errno(res))
 		}
 
-		res = uintptr(C.add_alias4(name, addr.Native(), dstaddr.Native(), mask.Native()))
+		res = uintptr(C.add_alias4(name, addr.Native(), dstaddr.Native()))
 
 	} else {
-		log.Println(tunnelMaskIPv6)
-		mask := Sockaddr{IP: tunnelMaskIPv6}
-
 		res = uintptr(C.remove_alias6(name, addr.Native()))
 		if res != 0 {
 			log.Println("alias6_remove:", syscall.Errno(res))
 		}
 
-		res = uintptr(C.add_alias6(name, addr.Native(), dstaddr.Native(), mask.Native()))
+		res = uintptr(C.add_alias6(name, addr.Native(), dstaddr.Native()))
 	}
 
 	if res != 0 {
