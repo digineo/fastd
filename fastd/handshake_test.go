@@ -1,4 +1,4 @@
-package main
+package fastd
 
 import (
 	"github.com/stretchr/testify/assert"
@@ -8,20 +8,22 @@ import (
 
 func TestHandshake(t *testing.T) {
 	assert := assert.New(t)
-	config.serverKeys = testServerSecret
 	peerAddr := Sockaddr{IP: net.ParseIP("127.0.0.1"), Port: 8755}
 
-	InitPeers()
+	srv := Server{}
+	srv.config.serverKeys = testServerSecret
+	srv.peers = make(map[string]*Peer)
+
 	peer := &Peer{
 		ourHandshakeKey: testHandshakeKey,
 	}
-	peers[string(peerAddr.Raw())] = peer
+	srv.peers[string(peerAddr.Raw())] = peer
 
 	// Handshake request (0x01)
 	msg := readTestmsg("null-request.dat")
 
 	// Handle request and build response (0x02)
-	reply := handlePacket(msg)
+	reply := srv.handlePacket(msg)
 	assert.NotNil(reply)
 	assert.NotNil(reply.SignKey)
 	assert.Equal([]byte{2}, reply.Records[RECORD_HANDSHAKE_TYPE])
@@ -33,7 +35,7 @@ func TestHandshake(t *testing.T) {
 	msg = readTestmsg("null-finish.dat")
 
 	// Handle finish
-	reply = handlePacket(msg)
+	reply = srv.handlePacket(msg)
 	assert.Nil(reply)
 	assert.Nil(peer.sharedKey)
 }

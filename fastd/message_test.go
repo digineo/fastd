@@ -1,4 +1,4 @@
-package main
+package fastd
 
 import (
 	"encoding/hex"

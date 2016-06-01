@@ -1,8 +1,7 @@
-package main
+package fastd
 
 import (
 	"net"
-	"sync"
 	"time"
 )
 
@@ -19,23 +18,6 @@ type Peer struct {
 	MTU    uint16
 }
 
-var (
-	peers         map[string]*Peer
-	peersMtx      sync.Mutex
-	VerifyPeer    func(*Peer) bool
-	EstablishPeer func(*Peer) bool
-)
-
-func InitPeers() {
-	peers = make(map[string]*Peer)
-	VerifyPeer = func(*Peer) bool {
-		return true
-	}
-	EstablishPeer = func(*Peer) bool {
-		return true
-	}
-}
-
 func NewPeer(addr *Sockaddr) *Peer {
 	return &Peer{
 		Remote:          addr,
@@ -43,21 +25,21 @@ func NewPeer(addr *Sockaddr) *Peer {
 	}
 }
 
-func GetPeer(addr *Sockaddr) (peer *Peer) {
+func (srv *Server) GetPeer(addr *Sockaddr) (peer *Peer) {
 	key := string(addr.Raw())
 
-	peersMtx.Lock()
-	defer peersMtx.Unlock()
+	srv.peersMtx.Lock()
+	defer srv.peersMtx.Unlock()
 
-	if peer, _ = peers[key]; peer == nil {
+	if peer, _ = srv.peers[key]; peer == nil {
 		peer = NewPeer(addr)
-		peers[key] = peer
+		srv.peers[key] = peer
 	}
 	return
 }
 
-func verifyPeer(peer *Peer) bool {
-	if VerifyPeer(peer) {
+func (srv *Server) verifyPeer(peer *Peer) bool {
+	if srv.config.VerifyPeer == nil || srv.config.VerifyPeer(peer) {
 		peer.handshakeTimeout = time.Now().Add(time.Second * 3)
 		return true
 	} else {
@@ -65,8 +47,8 @@ func verifyPeer(peer *Peer) bool {
 	}
 }
 
-func establishPeer(peer *Peer) bool {
-	return peer.handshakeTimeout.After(time.Now()) && VerifyPeer(peer)
+func (srv *Server) establishPeer(peer *Peer) bool {
+	return peer.handshakeTimeout.After(time.Now()) && (srv.config.EstablishPeer == nil || srv.config.EstablishPeer(peer))
 }
 
 // Set local and destination address for the PTP interface

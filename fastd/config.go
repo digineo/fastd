@@ -1,14 +1,15 @@
-package main
+package fastd
 
 import (
 	"encoding/hex"
 )
 
 type Config struct {
-	serverKeys *KeyPair
+	Bind          []Sockaddr
+	serverKeys    *KeyPair
+	VerifyPeer    func(*Peer) bool
+	EstablishPeer func(*Peer) bool
 }
-
-var config = Config{}
 
 // Set the server's key
 func (c *Config) SetServerKey(secretHex string) {

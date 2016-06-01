@@ -1,4 +1,4 @@
-package main
+package fastd
 
 /*
 #include <stdlib.h>
@@ -82,8 +82,8 @@ func SetAddr(ifname string, addr, dstaddr net.IP) (err error) {
 		res = uintptr(C.add_addr4(name, addr_sa.Native(), dstaddr_sa.Native()))
 
 	} else {
-		C.remove_addr6(name, addr_sa.Native())
-
+		addrNative := addr_sa.Native()
+		C.remove_addr6(name, addrNative)
 		res = uintptr(C.add_addr6(name, addr_sa.Native(), dstaddr_sa.Native()))
 	}
 
