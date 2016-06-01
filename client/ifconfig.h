@@ -9,5 +9,5 @@ int set_fd(sa_family_t, int);
 int get_ifindex(char*);
 int remove_alias4(char*);
 int remove_alias6(char*, struct sockaddr_storage*);
-int add_alias4(char*, struct sockaddr_storage*, struct sockaddr_storage*, struct sockaddr_storage*);
-int add_alias6(char*, struct sockaddr_storage*, struct sockaddr_storage*, struct sockaddr_storage*);
+int add_alias4(char*, struct sockaddr_storage*, struct sockaddr_storage*);
+int add_alias6(char*, struct sockaddr_storage*, struct sockaddr_storage*);

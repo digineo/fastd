@@ -25,6 +25,20 @@ set_fd(sa_family_t af, int fd){
 	return 0;
 }
 
+static inline void
+mask32(struct sockaddr_in *sa){
+	sa->sin_len    = sizeof(struct sockaddr_in6);
+	sa->sin_family = AF_INET;
+	memset(&sa->sin_addr, '\xff', sizeof(struct in_addr));
+}
+
+static inline void
+mask128(struct sockaddr_in6 *sa){
+	sa->sin6_len    = sizeof(struct sockaddr_in6);
+	sa->sin6_family = AF_INET6;
+	memset(&sa->sin6_addr, '\xff', sizeof(struct in6_addr));
+}
+
 int
 remove_alias4(char* ifname)
 {
@@ -47,29 +61,29 @@ remove_alias6(char* ifname, struct sockaddr_storage *addr)
 }
 
 int
-add_alias4(char* ifname, struct sockaddr_storage *addr, struct sockaddr_storage *dstaddr, struct sockaddr_storage *prefixmask)
+add_alias4(char* ifname, struct sockaddr_storage *addr, struct sockaddr_storage *dstaddr)
 {
 	struct ifaliasreq req;
 	bzero(&req, sizeof(req));
-	strncpy(req.ifra_name, ifname, sizeof(req.ifra_name));
 
-	memcpy(&req.ifra_addr,      addr,       sizeof(struct sockaddr));
-	memcpy(&req.ifra_broadaddr, dstaddr,    sizeof(struct sockaddr));
-	memcpy(&req.ifra_mask,      prefixmask, sizeof(struct sockaddr));
+	strncpy(req.ifra_name,      ifname,  sizeof(req.ifra_name));
+	memcpy(&req.ifra_addr,      addr,    sizeof(struct sockaddr));
+	memcpy(&req.ifra_broadaddr, dstaddr, sizeof(struct sockaddr));
+	mask32((struct sockaddr_in *)&req.ifra_mask);
 
 	return ioctl(ioctl_fd4, SIOCAIFADDR, &req);
 }
 
 int
-add_alias6(char* ifname, struct sockaddr_storage *addr, struct sockaddr_storage *dstaddr, struct sockaddr_storage *prefixmask)
+add_alias6(char* ifname, struct sockaddr_storage *addr, struct sockaddr_storage *dstaddr)
 {
 	struct in6_aliasreq req;
 	bzero(&req, sizeof(req));
-	strncpy(req.ifra_name, ifname, sizeof(req.ifra_name));
-ioctl_fd4ioctl_fd4
-	memcpy(&req.ifra_addr,       addr,       sizeof(struct sockaddr_in6));
-	memcpy(&req.ifra_dstaddr,    dstaddr,    sizeof(struct sockaddr_in6));
-	memcpy(&req.ifra_prefixmask, prefixmask, sizeof(struct sockaddr_in6));
+
+	strncpy(req.ifra_name,    ifname,  sizeof(req.ifra_name));
+	memcpy(&req.ifra_addr,    addr,    sizeof(struct sockaddr_in6));
+	memcpy(&req.ifra_dstaddr, dstaddr, sizeof(struct sockaddr_in6));
+	mask128(&req.ifra_prefixmask);
 
 	req.ifra_lifetime.ia6t_vltime = ND6_INFINITE_LIFETIME;
 	req.ifra_lifetime.ia6t_pltime = ND6_INFINITE_LIFETIME;
