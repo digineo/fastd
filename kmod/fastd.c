@@ -134,10 +134,14 @@ struct fastd_softc {
 	LIST_ENTRY(fastd_softc) fastd_flow_entry; // entry in flow table
 	LIST_ENTRY(fastd_softc) fastd_socket_entry; // list of softc for a socket
 
+	int unit;
 	struct ifnet *ifp;  /* the interface */
 	struct fastd_socket *socket; /* socket for outgoing packets */
 	union fastd_sockaddr remote;  /* remote ip address and port */
 	struct mtx mtx; /* protect mutable softc fields */
+
+	struct sysctl_oid	*sysctl_node;
+	struct sysctl_ctx_list	 sysctl_ctx;
 };
 
 // Head of all interfaces
@@ -179,6 +183,9 @@ static struct fastd_softc* fastd_lookup_peer(const union fastd_sockaddr *);
 
 static void fastd_sockaddr_copy(union fastd_sockaddr *, const union fastd_sockaddr *);
 static int  fastd_sockaddr_equal(const union fastd_sockaddr *, const union fastd_sockaddr *);
+
+static void	fastd_sysctl_setup(struct fastd_softc *);
+static void	fastd_sysctl_destroy(struct fastd_softc *);
 
 static int  fastd_ctrl_get_config(struct fastd_softc *, void *);
 static int  fastd_ctrl_set_remote(struct fastd_softc *, void *);
@@ -859,6 +866,7 @@ fastd_clone_create(struct if_clone *ifc, int unit, caddr_t params)
 	int error;
 
 	sc = malloc(sizeof(*sc), M_FASTD, M_WAITOK | M_ZERO);
+	sc->unit = unit;
 
 	if (params != NULL) {
 		// TODO
@@ -871,6 +879,7 @@ fastd_clone_create(struct if_clone *ifc, int unit, caddr_t params)
 	}
 
 	mtx_init(&sc->mtx, "fastd_mtx", NULL, MTX_DEF);
+	fastd_sysctl_setup(sc);
 
 	sc->ifp = ifp;
 
@@ -909,6 +918,7 @@ fastd_clone_destroy(struct ifnet *ifp)
 	mtx_destroy(&sc->mtx);
 	fastd_remove_peer(sc);
 	fastd_destroy(sc);
+	fastd_sysctl_destroy(sc);
 	rm_wunlock(&fastd_lock);
 }
 
@@ -983,6 +993,40 @@ fastd_ifinit(struct ifnet *ifp)
 	mtx_unlock(&sc->mtx);
 }
 
+
+
+// ------------------------------------------------------------------
+// Sysctl
+// ------------------------------------------------------------------
+
+
+
+static void
+fastd_sysctl_setup(struct fastd_softc *sc)
+{
+	struct sysctl_ctx_list *ctx;
+	struct sysctl_oid *node;
+	char namebuf[8];
+
+	ctx = &sc->sysctl_ctx;
+	snprintf(namebuf, sizeof(namebuf), "%d", sc->unit);
+
+	sysctl_ctx_init(ctx);
+	sc->sysctl_node = SYSCTL_ADD_NODE(ctx,
+	    SYSCTL_STATIC_CHILDREN(/**/), OID_AUTO, namebuf,
+	    CTLFLAG_RD, NULL, "");
+
+	SYSCTL_ADD_ULONG(ctx, SYSCTL_CHILDREN(sc->sysctl_node), OID_AUTO,
+	    "ipackets", CTLFLAG_RD, &sc->ifp->if_ipackets, 0,
+	    "incoming packets");
+}
+
+static void
+fastd_sysctl_destroy(struct fastd_softc *sc)
+{
+	sysctl_ctx_free(&sc->sysctl_ctx);
+	sc->sysctl_node = NULL;
+}
 
 
 
