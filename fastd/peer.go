@@ -42,7 +42,7 @@ func (srv *Server) GetPeer(addr *Sockaddr) (peer *Peer) {
 }
 
 func (srv *Server) verifyPeer(peer *Peer) bool {
-	if srv.config.VerifyPeer == nil || srv.config.VerifyPeer(peer) {
+	if srv.config.OnVerify == nil || srv.config.OnVerify(peer) {
 		peer.handshakeTimeout = time.Now().Add(time.Second * 3)
 		return true
 	} else {
@@ -51,7 +51,7 @@ func (srv *Server) verifyPeer(peer *Peer) bool {
 }
 
 func (srv *Server) establishPeer(peer *Peer) bool {
-	return peer.handshakeTimeout.After(time.Now()) && (srv.config.EstablishPeer == nil || srv.config.EstablishPeer(peer))
+	return peer.handshakeTimeout.After(time.Now()) && (srv.config.OnEstablish == nil || srv.config.OnEstablish(peer))
 }
 
 // Removes a peer and its interface
