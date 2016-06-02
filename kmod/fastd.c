@@ -660,12 +660,18 @@ fastd_recv_data(struct mbuf *m, u_int offset, u_int datalen, const union fastd_s
 
 	if (datalen == 1){
 		// Keepalive packet
+		if_inc_counter(sc->ifp, IFCOUNTER_IPACKETS, 1);
+
 		m->m_len = m->m_pkthdr.len = 1;
 		m->m_data[0] = FASTD_HDR_DATA;
 		int error = sosend(socket->socket, (struct sockaddr *)sa_src, NULL, m, NULL, 0, curthread);
+
 		if (error){
 			m_freem(m);
+			if_inc_counter(sc->ifp, IFCOUNTER_OERRORS, 1);
 			DEBUG(sc->ifp, "fastd keepalive response failed: %d\n", error);
+		} else {
+			if_inc_counter(sc->ifp, IFCOUNTER_OPACKETS, 1);
 		}
 		return;
 	}
