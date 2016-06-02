@@ -3,6 +3,7 @@ package fastd
 import (
 	"fmt"
 	"sync"
+	"time"
 )
 
 type Server struct {
@@ -10,6 +11,10 @@ type Server struct {
 	peersMtx sync.Mutex
 	impl     ServerImpl
 	config   Config
+	wg       sync.WaitGroup
+
+	timeoutTicker *time.Ticker
+	timeoutStop   chan struct{}
 }
 
 type ServerImpl interface {
@@ -45,22 +50,33 @@ func NewServer(implName string, config *Config) (srv *Server, err error) {
 		peers:  make(map[string]*Peer),
 		impl:   instance,
 		config: *config,
+
+		timeoutTicker: time.NewTicker(peerCheckInterval),
+		timeoutStop:   make(chan struct{}),
 	}
 
-	go srv.worker()
+	srv.startWorker()
+	srv.startTimeouter()
 
 	return
 }
 
+// Stops all routines
 func (srv *Server) Stop() {
+	srv.stopTimeouter()
 	srv.impl.Close()
+	srv.wg.Wait()
 }
 
 // Handle incoming packets
-func (srv *Server) worker() {
-	for msg := range srv.impl.Read() {
-		if reply := srv.handlePacket(msg); reply != nil {
-			srv.impl.Write(reply)
+func (srv *Server) startWorker() {
+	srv.wg.Add(1)
+	go func() {
+		for msg := range srv.impl.Read() {
+			if reply := srv.handlePacket(msg); reply != nil {
+				srv.impl.Write(reply)
+			}
 		}
-	}
+		srv.wg.Done()
+	}()
 }

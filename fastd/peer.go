@@ -1,7 +1,6 @@
 package fastd
 
 import (
-	"log"
 	"net"
 	"time"
 )
@@ -55,46 +54,15 @@ func (srv *Server) establishPeer(peer *Peer) bool {
 	return peer.handshakeTimeout.After(time.Now()) && (srv.config.EstablishPeer == nil || srv.config.EstablishPeer(peer))
 }
 
+// Removes a peer and its interface
+func (srv *Server) removePeerLocked(peer *Peer) {
+	if peer.Ifname != "" {
+		DestroyIface(peer.Ifname)
+	}
+	delete(srv.peers, string(peer.Remote.Raw()))
+}
+
 // Set local and destination address for the PTP interface
 func (peer *Peer) SetAddresses(addr, dstaddr net.IP) error {
 	return SetAddr(peer.Ifname, addr, dstaddr)
-}
-
-// Returns true if the counter has been updated
-func (peer *Peer) updateCounter() bool {
-	stats, err := GetStats(peer.Ifname)
-	if err != nil {
-		log.Println("Unable to get stats for %s: %s", peer.Ifname, err)
-		return false
-	}
-
-	// packet counter changed?
-	if peer.ipackets != stats.ipackets {
-		peer.ipackets = stats.ipackets
-		peer.lastSeen = time.Now()
-		return true
-	}
-
-	return false
-}
-
-// Returns whether the peer is timed out
-func (peer *Peer) hasTimeout() bool {
-	if peer.Ifname != "" && peer.updateCounter() {
-		return false
-	}
-
-	return peer.lastSeen.Add(time.Minute).After(time.Now())
-}
-
-// Removes timed out peers
-func (srv *Server) timeoutPeers() {
-	srv.peersMtx.Lock()
-	defer srv.peersMtx.Unlock()
-
-	for _, peer := range srv.peers {
-		if peer.hasTimeout() {
-			// TODO remove peer
-		}
-	}
 }
