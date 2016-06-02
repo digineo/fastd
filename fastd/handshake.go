@@ -5,6 +5,7 @@ import (
 	"log"
 	"net"
 	"reflect"
+	"time"
 )
 
 func (srv *Server) handlePacket(msg *Message) (reply *Message) {
@@ -50,6 +51,7 @@ func (srv *Server) handlePacket(msg *Message) (reply *Message) {
 	peer := srv.GetPeer(msg.Src)
 	peer.PublicKey = senderKey
 	peer.peerHandshakeKey = senderHandshakeKey
+	peer.lastSeen = time.Now()
 
 	if !peer.makeSharedHandshakeKey(srv.config.serverKeys) {
 		log.Println("unable to make shared handshake key")

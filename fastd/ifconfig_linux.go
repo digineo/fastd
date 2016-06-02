@@ -1,6 +1,7 @@
 package fastd
 
 import (
+	"errors"
 	"net"
 )
 
@@ -19,4 +20,8 @@ func SetRemote(ifname string, remote *Sockaddr) {
 
 func SetAddr(ifname string, addr, dstaddr net.IP) (err error) {
 	return nil
+}
+
+func GetStats(ifname string) (*IfaceStats, error) {
+	return nil, errors.New("not implemented")
 }

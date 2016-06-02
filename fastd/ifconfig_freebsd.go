@@ -29,11 +29,6 @@ type ifconfigParam struct {
 	remote [18]byte
 }
 
-type IfaceStats struct {
-	ipackets uint64
-	opackets uint64
-}
-
 func newControlFd(af int) int {
 	fd, err := syscall.Socket(af, syscall.SOCK_DGRAM, 0)
 	if err != nil {
