@@ -18,10 +18,10 @@ type Server struct {
 }
 
 type ServerImpl interface {
-	Read() chan *Message
-	Write(*Message) error
-	Close()
-	Peers() []*Peer
+	Read() chan *Message  // returns the channel for incoming messages
+	Write(*Message) error // sends a message
+	Close()               // closes the server
+	Peers() []*Peer       // returns list of existing peers
 }
 
 type ServerBuilder func([]Sockaddr) (ServerImpl, error)
