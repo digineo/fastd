@@ -56,6 +56,10 @@ func (srv *UDPServer) Close() {
 	close(srv.recv)
 }
 
+func (srv *UDPServer) Peers() []*Peer {
+	return nil
+}
+
 func (srv *UDPServer) readPackets(udpconn *UDPConn) {
 	buf := make([]byte, 1500)
 

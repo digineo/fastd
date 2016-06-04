@@ -47,7 +47,8 @@
 #define DEBUG	if_printf
 
 /* Maximum output packet size (default) */
-#define	FASTDMTU		1406
+#define	FASTD_MTU		1406
+#define	FASTD_PUBKEY_SIZE	32
 
 #define FASTD_HASH_SHIFT	6
 #define FASTD_HASH_SIZE		(1 << FASTD_HASH_SHIFT)
@@ -55,7 +56,7 @@
 #define FASTD_HASH(_sc)		((_sc)->remote.in4.sin_port % FASTD_HASH_SIZE)
 
 // SIOCGDRVSPEC/SIOCSDRVSPEC commands on fastd interface
-#define FASTD_CMD_GET_CONFIG	0
+#define FASTD_CMD_GET_REMOTE	0
 #define FASTD_CMD_SET_REMOTE	1
 #define FASTD_CMD_GET_STATS	2
 
@@ -63,6 +64,7 @@
 #define satoconstsin6(sa) ((const struct sockaddr_in6 *)(sa))
 
 struct iffastdcfg {
+	char			pubkey[FASTD_PUBKEY_SIZE];
 	struct fastd_inaddr	remote;
 };
 
@@ -140,10 +142,11 @@ struct fastd_softc {
 	LIST_ENTRY(fastd_softc) fastd_flow_entry; // entry in flow table
 	LIST_ENTRY(fastd_softc) fastd_socket_entry; // list of softc for a socket
 
-	struct ifnet *ifp;  /* the interface */
-	struct fastd_socket *socket; /* socket for outgoing packets */
-	union fastd_sockaddr remote;  /* remote ip address and port */
-	struct mtx mtx; /* protect mutable softc fields */
+	struct ifnet		*ifp;  /* the interface */
+	struct fastd_socket	*socket; /* socket for outgoing packets */
+	union fastd_sockaddr	remote;  /* remote ip address and port */
+	struct mtx		mtx; /* protect mutable softc fields */
+	char			pubkey[FASTD_PUBKEY_SIZE]; /* public key of the peer */
 };
 
 // Head of all interfaces
@@ -186,7 +189,7 @@ static struct fastd_softc* fastd_lookup_peer(const union fastd_sockaddr *);
 static void fastd_sockaddr_copy(union fastd_sockaddr *, const union fastd_sockaddr *);
 static int  fastd_sockaddr_equal(const union fastd_sockaddr *, const union fastd_sockaddr *);
 
-static int  fastd_ctrl_get_config(struct fastd_softc *, void *);
+static int  fastd_ctrl_get_remote(struct fastd_softc *, void *);
 static int  fastd_ctrl_set_remote(struct fastd_softc *, void *);
 static int  fastd_ctrl_get_stats(struct fastd_softc *, void *);
 
@@ -893,7 +896,7 @@ fastd_clone_create(struct if_clone *ifc, int unit, caddr_t params)
 	ifp->if_ioctl = fastd_ifioctl;
 	ifp->if_output = fastd_output;
 	ifp->if_start = fastd_ifstart;
-	ifp->if_mtu = FASTDMTU;
+	ifp->if_mtu = FASTD_MTU;
 	ifp->if_flags = IFF_POINTOPOINT | IFF_MULTICAST;
 	ifp->if_capabilities |= IFCAP_LINKSTATE;
 	ifp->if_capenable |= IFCAP_LINKSTATE;
@@ -1009,8 +1012,9 @@ fastd_ifinit(struct ifnet *ifp)
 
 // Functions that are called on SIOCGDRVSPEC and SIOCSDRVSPEC
 static const struct fastd_control fastd_control_table[] = {
-	[FASTD_CMD_GET_CONFIG] =
-			{ fastd_ctrl_get_config, sizeof(struct iffastdcfg),
+
+	[FASTD_CMD_GET_REMOTE] =
+			{   fastd_ctrl_get_remote, sizeof(struct iffastdcfg),
 		FASTD_CTRL_FLAG_COPYOUT
 			},
 
@@ -1030,16 +1034,15 @@ static const int fastd_control_table_size = nitems(fastd_control_table);
 
 
 static int
-fastd_ctrl_get_config(struct fastd_softc *sc, void *arg)
+fastd_ctrl_get_remote(struct fastd_softc *sc, void *arg)
 {
 	struct iffastdcfg *cfg;
-
-	printf("fastd_ctrl_get_config()\n");
 
 	cfg = arg;
 	bzero(cfg, sizeof(*cfg));
 
-	memcpy(&cfg->remote, &sc->remote, sizeof(union fastd_sockaddr));
+	memcpy(&cfg->pubkey, &sc->pubkey, sizeof(cfg->pubkey));
+	sock_to_inet(&cfg->remote, &sc->remote);
 
 	return (0);
 }
@@ -1079,6 +1082,7 @@ fastd_ctrl_set_remote(struct fastd_softc *sc, void *arg)
 	// Reconfigure
 	fastd_remove_peer(sc);
 	fastd_sockaddr_copy(&sc->remote, &sa);
+	memcpy(&sc->pubkey, &cfg->pubkey, sizeof(sc->pubkey));
 	sc->socket = socket;
 	fastd_add_peer(sc);
 

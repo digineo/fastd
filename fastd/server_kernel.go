@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"os"
+	"strings"
 	"syscall"
 	"unsafe"
 )
@@ -47,13 +49,12 @@ func NewKernelServer(addresses []Sockaddr) (ServerImpl, error) {
 	}
 
 	for _, address := range addresses {
-		if err = srv.ioctl(ioctl_CLOSE, address); err != nil && err != syscall.ENXIO {
-			log.Println("ioctl close failed", err)
-		}
+		// may fail
+		srv.ioctl(ioctl_CLOSE, address)
+
 		if err = srv.ioctl(ioctl_BIND, address); err != nil {
-			log.Println("ioctl bind failed", err)
 			srv.Close()
-			return nil, err
+			return nil, fmt.Errorf("bind() failed:", err)
 		}
 		srv.addresses = append(srv.addresses, address)
 	}
@@ -77,6 +78,30 @@ func (srv *KernelServer) Close() {
 		srv.dev.Close()
 	}
 	close(srv.recv)
+}
+
+func (srv *KernelServer) Peers() (peers []*Peer) {
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		log.Println("failed to load interfaces:", err)
+		return
+	}
+	for _, iface := range ifaces {
+		if strings.HasPrefix(iface.Name, "fastd") {
+			remote, pubkey, err := GetRemote(iface.Name)
+			if err == nil {
+				peers = append(peers, &Peer{
+					Ifname:    iface.Name,
+					Remote:    remote,
+					PublicKey: pubkey,
+				})
+				log.Printf("loaded existing session: iface=%s remote=%s pubkey=%x", iface.Name, remote, pubkey)
+			} else {
+				log.Println("failed to load session: iface=%s", iface.Name)
+			}
+		}
+	}
+	return
 }
 
 func (srv *KernelServer) readPackets() error {

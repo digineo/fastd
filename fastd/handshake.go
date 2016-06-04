@@ -120,7 +120,7 @@ func (srv *Server) handleFinishHandshake(msg *Message, reply *Message, peer *Pee
 
 	peer.Ifname = CloneIface("fastd")
 
-	SetRemote(peer.Ifname, peer.Remote)
+	SetRemote(peer.Ifname, peer.Remote, peer.PublicKey)
 	peer.SetAddresses(net.ParseIP("192.168.8.0"), net.ParseIP("192.168.8.1"))
 	peer.SetAddresses(net.ParseIP("fe80::1"), net.ParseIP("fe80::2"))
 

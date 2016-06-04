@@ -41,6 +41,18 @@ func (srv *Server) GetPeer(addr *Sockaddr) (peer *Peer) {
 	return
 }
 
+// Adds a peer to the internal map without any verification
+func (srv *Server) addPeer(in *Peer) {
+	key := string(in.Remote.Raw())
+
+	peer := NewPeer(in.Remote)
+	peer.Ifname = in.Ifname
+	peer.PublicKey = in.PublicKey
+	srv.peers[key] = peer
+
+	return
+}
+
 func (srv *Server) verifyPeer(peer *Peer) bool {
 	if srv.config.OnVerify == nil || srv.config.OnVerify(peer) {
 		peer.handshakeTimeout = time.Now().Add(time.Second * 3)

@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	FASTD_PARAM_GET_CONFIG = iota
+	FASTD_PARAM_GET_REMOTE = iota
 	FASTD_PARAM_SET_REMOTE
 	FASTD_PARAM_GET_STATS
 )
@@ -26,6 +26,7 @@ var (
 )
 
 type ifconfigParam struct {
+	pubkey [32]byte
 	remote [18]byte
 }
 
@@ -41,11 +42,25 @@ func newControlFd(af int) int {
 	return fd
 }
 
-// Set remote address
-func SetRemote(ifname string, remote *Sockaddr) error {
+// Get remote address and pubkey
+func GetRemote(ifname string) (remote *Sockaddr, pubkey []byte, err error) {
+	param := &ifconfigParam{}
+
+	err = ioctlIfdrv(ifname, ioctl_GET_DRV_SPEC, FASTD_PARAM_GET_REMOTE, unsafe.Pointer(param), unsafe.Sizeof(*param))
+	if err == nil {
+		pubkey = param.pubkey[:]
+		remote = parseSockaddr(param.remote[:])
+	}
+
+	return
+}
+
+// Set remote address and pubkey
+func SetRemote(ifname string, remote *Sockaddr, pubkey []byte) error {
 	param := &ifconfigParam{
 		remote: remote.RawFixed(),
 	}
+	copy(param.pubkey[:], pubkey)
 
 	return ioctlIfdrv(ifname, ioctl_SET_DRV_SPEC, FASTD_PARAM_SET_REMOTE, unsafe.Pointer(param), unsafe.Sizeof(*param))
 }

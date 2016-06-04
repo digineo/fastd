@@ -3,6 +3,7 @@ package fastd
 import (
 	"encoding/binary"
 	"net"
+	"strconv"
 	"syscall"
 )
 
@@ -80,6 +81,10 @@ func (addr *Sockaddr) Family() int {
 	} else {
 		return syscall.AF_INET6
 	}
+}
+
+func (addr *Sockaddr) String() string {
+	return net.JoinHostPort(addr.IP.String(), strconv.Itoa(int(addr.Port)))
 }
 
 func isIPv4(ip net.IP) bool {

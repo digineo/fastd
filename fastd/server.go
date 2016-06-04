@@ -21,6 +21,7 @@ type ServerImpl interface {
 	Read() chan *Message
 	Write(*Message) error
 	Close()
+	Peers() []*Peer
 }
 
 type ServerBuilder func([]Sockaddr) (ServerImpl, error)
@@ -53,6 +54,11 @@ func NewServer(implName string, config *Config) (srv *Server, err error) {
 
 		timeoutTicker: time.NewTicker(peerCheckInterval),
 		timeoutStop:   make(chan struct{}),
+	}
+
+	// Load existing sessions
+	for _, peer := range srv.impl.Peers() {
+		srv.addPeer(peer)
 	}
 
 	srv.startWorker()

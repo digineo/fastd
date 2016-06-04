@@ -15,7 +15,12 @@ func DestroyIface(name string) string {
 	return ""
 }
 
-func SetRemote(ifname string, remote *Sockaddr) {
+func SetRemote(ifname string, remote *Sockaddr, pubkey []byte) error {
+	return errors.New("not implemented")
+}
+
+func GetRemote(ifname string) (remote *Sockaddr, pubkey []byte, err error) {
+	return nil, nil, errors.New("not implemented")
 }
 
 func SetAddr(ifname string, addr, dstaddr net.IP) (err error) {
