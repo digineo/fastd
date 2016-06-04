@@ -75,7 +75,6 @@ func ioctlIfdrv(ifname string, ioctlCmd uintptr, ifdCmd uintptr, data unsafe.Poi
 }
 
 func CloneIface(name string) string {
-	log.Println("SIOCIFCREATE", name)
 	return ioctl_ifreq(ioctl_SIOCIFCREATE, name)
 }
 

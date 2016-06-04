@@ -54,7 +54,6 @@ func RandomKeypair() (keys *KeyPair) {
 	}
 
 	C.ecc_25519_gf_sanitize_secret(&eccSecret, &eccSecret)
-	//log.Printf("random keypair: %x", eccSecret[:])
 	return NewKeyPair(eccSecret[:])
 }
 

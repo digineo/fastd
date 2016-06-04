@@ -89,7 +89,6 @@ func (srv *KernelServer) readPackets() error {
 
 	for {
 		num, _, errno := syscall.Syscall(syscall.SYS_POLL, uintptr(unsafe.Pointer(&pollFd)), uintptr(1), 60*1000)
-		log.Printf("Poll errno=%d, num=%d revents=%04x", errno, num, pollFd.revents)
 
 		if errno != 0 {
 			return fmt.Errorf("syscall.SYS_POLL failed: %d", errno)
@@ -137,8 +136,6 @@ func (srv *KernelServer) read(buf []byte) error {
 
 func (srv *KernelServer) Write(msg *Message) error {
 	bytes := msg.Marshal(true)
-	i, err := srv.dev.Write(bytes)
-	log.Println("send:", bytes)
-	log.Println("written:", i, err)
+	_, err := srv.dev.Write(bytes)
 	return err
 }
