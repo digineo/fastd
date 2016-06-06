@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"github.com/digineo/fastd/ifconfig"
 	"log"
-	"net"
 	"reflect"
 	"time"
 )
@@ -82,6 +81,18 @@ func (srv *Server) handlePacket(msg *Message) (reply *Message) {
 		if !srv.verifyPeer(peer) {
 			return nil
 		}
+
+		// Copy IPv4 addresses into response
+		if peer.IPv4.LocalAddr != nil && peer.IPv4.DestAddr != nil {
+			reply.Records[RECORD_IPV4_ADDR] = []byte(peer.IPv4.DestAddr.To4())
+			reply.Records[RECORD_IPV4_DSTADDR] = []byte(peer.IPv4.LocalAddr.To4())
+		}
+
+		// Copy IPv6 addresses into response
+		if peer.IPv6.LocalAddr != nil && peer.IPv6.DestAddr != nil {
+			reply.Records[RECORD_IPV6_ADDR] = []byte(peer.IPv6.DestAddr.To16())
+			reply.Records[RECORD_IPV6_DSTADDR] = []byte(peer.IPv6.LocalAddr.To16())
+		}
 	case 3:
 		msg.SignKey = peer.sharedKey
 		if !srv.handleFinishHandshake(msg, reply, peer) {
@@ -127,8 +138,8 @@ func (srv *Server) handleFinishHandshake(msg *Message, reply *Message, peer *Pee
 		log.Printf("unable to set remote for %s: %s", peer.Ifname, err)
 	}
 
-	peer.SetAddresses(net.ParseIP("192.168.8.0"), net.ParseIP("192.168.8.1"))
-	peer.SetAddresses(net.ParseIP("fe80::1"), net.ParseIP("fe80::2"))
+	peer.SetAddresses(peer.IPv4)
+	peer.SetAddresses(peer.IPv6)
 
 	return false
 }

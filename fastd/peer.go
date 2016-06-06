@@ -6,6 +6,12 @@ import (
 	"time"
 )
 
+type AddressConfig struct {
+	LocalAddr net.IP    // local PTP address
+	DestAddr  net.IP    // remote PTP address
+	Network   net.IPNet // routed network
+}
+
 type Peer struct {
 	Remote           *Sockaddr
 	PublicKey        []byte
@@ -17,6 +23,8 @@ type Peer struct {
 
 	Ifname   string
 	MTU      uint16
+	IPv4     AddressConfig
+	IPv6     AddressConfig
 	ipackets uint64 // received packet counter
 }
 
@@ -76,6 +84,10 @@ func (srv *Server) removePeerLocked(peer *Peer) {
 }
 
 // Set local and destination address for the PTP interface
-func (peer *Peer) SetAddresses(addr, dstaddr net.IP) error {
-	return SetAddr(peer.Ifname, addr, dstaddr)
+func (peer *Peer) SetAddresses(config AddressConfig) error {
+	if config.LocalAddr != nil && config.DestAddr != nil {
+		return SetAddr(peer.Ifname, config.LocalAddr, config.DestAddr)
+	} else {
+		return nil
+	}
 }
