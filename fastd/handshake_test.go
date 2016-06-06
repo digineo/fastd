@@ -15,9 +15,10 @@ func TestHandshake(t *testing.T) {
 	srv.peers = make(map[string]*Peer)
 
 	peer := &Peer{
+		Remote:          &peerAddr,
 		ourHandshakeKey: testHandshakeKey,
 	}
-	srv.peers[string(peerAddr.Raw())] = peer
+	srv.addPeer(peer)
 
 	// Handshake request (0x01)
 	msg := readTestmsg("null-request.dat")
