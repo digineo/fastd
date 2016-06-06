@@ -2,6 +2,7 @@ package fastd
 
 import (
 	"encoding/hex"
+	"fmt"
 )
 
 type Config struct {
@@ -13,13 +14,14 @@ type Config struct {
 }
 
 // Set the server's key
-func (c *Config) SetServerKey(secretHex string) {
+func (c *Config) SetServerKey(secretHex string) error {
 	secret, err := hex.DecodeString(secretHex)
 	if err != nil {
-		panic(err)
+		return fmt.Errorf("unable to decode secret:", secretHex)
 	}
 	if len(secret) != KEYSIZE {
-		panic("wrong key size")
+		return fmt.Errorf("wrong secret size: expected=%d actual=%d", KEYSIZE, len(secret))
 	}
 	c.serverKeys = NewKeyPair(secret)
+	return nil
 }

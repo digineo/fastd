@@ -44,7 +44,11 @@ func main() {
 		config := fastd.Config{
 			Bind: []fastd.Sockaddr{{net.ParseIP(listenAddr), uint16(listenPort)}},
 		}
-		config.SetServerKey(secret)
+
+		err := config.SetServerKey(secret)
+		if err != nil {
+			panic(err)
+		}
 
 		srv, err := fastd.NewServer(implName, &config)
 		if err != nil {
