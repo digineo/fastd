@@ -8,9 +8,8 @@ import (
 )
 
 type Sockaddr struct {
-	IP      net.IP
-	Port    uint16
-	ScopeId uint32
+	IP   net.IP
+	Port uint16
 }
 
 func uint16toh(i uint16) uint16 {

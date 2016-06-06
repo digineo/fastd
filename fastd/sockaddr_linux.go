@@ -24,9 +24,8 @@ func (addr *Sockaddr) Native() *C.struct_sockaddr_storage {
 		return (*C.struct_sockaddr_storage)(unsafe.Pointer(&raw))
 	case syscall.AF_INET6:
 		raw := syscall.RawSockaddrInet6{
-			Family:   syscall.AF_INET6,
-			Port:     uint16toh(addr.Port),
-			Scope_id: addr.ScopeId,
+			Family: syscall.AF_INET6,
+			Port:   uint16toh(addr.Port),
 		}
 		copy(raw.Addr[:], addr.IP.To16())
 		return (*C.struct_sockaddr_storage)(unsafe.Pointer(&raw))
