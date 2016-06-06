@@ -50,6 +50,10 @@
 #define	FASTD_MTU		1406
 #define	FASTD_PUBKEY_SIZE	32
 
+#define FASTD_SOCKADDR_IS_IPV4(_sin) ((_sin)->sa.sa_family == AF_INET)
+#define FASTD_SOCKADDR_IS_IPV6(_sin) ((_sin)->sa.sa_family == AF_INET6)
+#define FASTD_SOCKADDR_IS_IPV46(_sin) (FASTD_SOCKADDR_IS_IPV4(_sin) || FASTD_SOCKADDR_IS_IPV6(_sin))
+
 #define FASTD_HASH_SHIFT	6
 #define FASTD_HASH_SIZE		(1 << FASTD_HASH_SHIFT)
 #define FASTD_HASH_ADDR(_sa)	((_sa)->in4.sin_port % FASTD_HASH_SIZE)
@@ -1042,7 +1046,9 @@ fastd_ctrl_get_remote(struct fastd_softc *sc, void *arg)
 	bzero(cfg, sizeof(*cfg));
 
 	memcpy(&cfg->pubkey, &sc->pubkey, sizeof(cfg->pubkey));
-	sock_to_inet(&cfg->remote, &sc->remote);
+
+	if (FASTD_SOCKADDR_IS_IPV46(&sc->remote))
+		sock_to_inet(&cfg->remote, &sc->remote);
 
 	return (0);
 }
