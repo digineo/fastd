@@ -66,7 +66,7 @@ func NewKernelServer(addresses []Sockaddr) (ServerImpl, error) {
 
 func (srv *KernelServer) ioctl(cmd uintptr, addr Sockaddr) error {
 	sa := addr.RawFixed()
-	return ioctl(srv.dev.Fd(), cmd, uintptr(unsafe.Pointer(&sa)))
+	return Ioctl(srv.dev.Fd(), cmd, uintptr(unsafe.Pointer(&sa)))
 }
 
 func (srv *KernelServer) Read() chan *Message {

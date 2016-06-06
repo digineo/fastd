@@ -2,6 +2,7 @@ package fastd
 
 import (
 	"bytes"
+	"github.com/digineo/fastd/ifconfig"
 	"log"
 	"net"
 	"reflect"
@@ -118,9 +119,12 @@ func (srv *Server) handleFinishHandshake(msg *Message, reply *Message, peer *Pee
 	peer.sharedKey = nil
 	peer.peerHandshakeKey = nil
 
-	peer.Ifname = CloneIface("fastd")
+	peer.Ifname = ifconfig.Clone("fastd")
 
-	SetRemote(peer.Ifname, peer.Remote, peer.PublicKey)
+	if err := SetRemote(peer.Ifname, peer.Remote, peer.PublicKey); err != nil {
+		log.Printf("unable to set remote for %s: %s", peer.Ifname, err)
+	}
+
 	peer.SetAddresses(net.ParseIP("192.168.8.0"), net.ParseIP("192.168.8.1"))
 	peer.SetAddresses(net.ParseIP("fe80::1"), net.ParseIP("fe80::2"))
 

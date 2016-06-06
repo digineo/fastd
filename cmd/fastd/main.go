@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"syscall"
 
-	"github.com/corny/fastd/fastd"
+	"github.com/digineo/fastd/fastd"
 )
 
 func main() {

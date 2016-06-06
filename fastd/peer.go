@@ -1,6 +1,7 @@
 package fastd
 
 import (
+	"github.com/digineo/fastd/ifconfig"
 	"net"
 	"time"
 )
@@ -69,7 +70,7 @@ func (srv *Server) establishPeer(peer *Peer) bool {
 // Removes a peer and its interface
 func (srv *Server) removePeerLocked(peer *Peer) {
 	if peer.Ifname != "" {
-		DestroyIface(peer.Ifname)
+		ifconfig.Destroy(peer.Ifname)
 	}
 	delete(srv.peers, string(peer.Remote.Raw()))
 }
