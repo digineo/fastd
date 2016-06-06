@@ -14,7 +14,7 @@ import (
 
 func main() {
 	if len(os.Args) < 2 {
-		println("no arguments given")
+		fmt.Println("no arguments given")
 		os.Exit(1)
 	}
 
@@ -36,7 +36,7 @@ func main() {
 
 		// Initialize secret key
 		if secret == "" {
-			println("secret key missing\n")
+			fmt.Println("secret key missing")
 			flags.PrintDefaults()
 			os.Exit(1)
 		}
@@ -52,7 +52,7 @@ func main() {
 
 		srv, err := fastd.NewServer(implName, &config)
 		if err != nil {
-			println("unable to start server:", err)
+			fmt.Println("unable to start server:", err)
 			os.Exit(1)
 		}
 
@@ -68,19 +68,19 @@ func main() {
 	case "addr":
 		err := fastd.SetAddr(args[0], net.ParseIP(args[1]), net.ParseIP(args[2]))
 		if err != nil {
-			println(err.Error())
+			fmt.Println(err.Error())
 			os.Exit(1)
 		}
 	case "ifstat":
 		if stats, err := fastd.GetStats(args[0]); err != nil {
-			println(err.Error())
+			fmt.Println(err.Error())
 			os.Exit(1)
 		} else {
 			fmt.Printf("%+v", stats)
 		}
 
 	default:
-		println("invalid command:", cmd)
+		fmt.Println("invalid command:", cmd)
 		os.Exit(1)
 	}
 }
