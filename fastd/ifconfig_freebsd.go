@@ -93,8 +93,8 @@ func CloneIface(name string) string {
 	return ioctl_ifreq(ioctl_SIOCIFCREATE, name)
 }
 
-func DestroyIface(name string) string {
-	return ioctl_ifreq(ioctl_SIOCIFDESTROY, name)
+func DestroyIface(name string) {
+	ioctl_ifreq(ioctl_SIOCIFDESTROY, name)
 }
 
 func SetAddr(ifname string, addr, dstaddr net.IP) (err error) {

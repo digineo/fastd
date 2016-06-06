@@ -11,8 +11,7 @@ func CloneIface(name string) string {
 	return ""
 }
 
-func DestroyIface(name string) string {
-	return ""
+func DestroyIface(name string) {
 }
 
 func SetRemote(ifname string, remote *Sockaddr, pubkey []byte) error {
