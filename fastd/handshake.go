@@ -11,8 +11,16 @@ import (
 
 func (srv *Server) handlePacket(msg *Message) (reply *Message) {
 	records := msg.Records
+	var handshakeType byte
 
-	log.Printf("received handshake from %s[%d] using fastd %s", msg.Src.IP.String(), msg.Src.Port, records[RECORD_VERSION_NAME])
+	if val := records[RECORD_HANDSHAKE_TYPE]; len(val) != 1 {
+		log.Println("handshake type missing")
+		return
+	} else {
+		handshakeType = val[0]
+	}
+
+	log.Printf("received handshake %x from %s[%d] using fastd %s", handshakeType, msg.Src.IP.String(), msg.Src.Port, records[RECORD_VERSION_NAME])
 
 	senderKey := records[RECORD_SENDER_KEY]
 	recipientKey := records[RECORD_RECIPIENT_KEY]
@@ -69,13 +77,7 @@ func (srv *Server) handlePacket(msg *Message) (reply *Message) {
 	reply.Records[RECORD_RECIPIENT_KEY] = senderKey
 	reply.Records[RECORD_RECIPIENT_HANDSHAKE_KEY] = senderHandshakeKey
 
-	val := msg.Records[RECORD_HANDSHAKE_TYPE]
-	if len(val) != 1 {
-		return
-	}
-
-	t := val[0]
-	switch t {
+	switch handshakeType {
 	case 1:
 		if !srv.verifyPeer(peer) {
 			return nil
@@ -86,7 +88,7 @@ func (srv *Server) handlePacket(msg *Message) (reply *Message) {
 			return nil
 		}
 	default:
-		log.Printf("unsupported handshake type: %d", t)
+		log.Printf("unsupported handshake type: %d", handshakeType)
 	}
 
 	return
