@@ -6,11 +6,12 @@ import (
 )
 
 type Config struct {
-	Bind           []Sockaddr
-	serverKeys     *KeyPair
-	OnVerify       func(*Peer) bool
-	OnEstablish    func(*Peer) bool
-	OnDisestablish func(*Peer)
+	Bind            []Sockaddr
+	serverKeys      *KeyPair
+	AssignAddresses func(*Peer)
+	OnVerify        func(*Peer) bool
+	OnEstablish     func(*Peer) bool
+	OnDisestablish  func(*Peer)
 }
 
 // Set the server's key

@@ -43,6 +43,15 @@ func main() {
 
 		config := fastd.Config{
 			Bind: []fastd.Sockaddr{{net.ParseIP(listenAddr), uint16(listenPort)}},
+			AssignAddresses: func(peer *fastd.Peer) {
+				// Generate addresses for test purposes
+				index, _ := strconv.Atoi(peer.Ifname[5:])
+				if index > 128 {
+					panic("interface index out of range")
+				}
+				peer.IPv4.LocalAddr = net.IPv4(192, 168, 23, byte(index)*2)
+				peer.IPv4.DestAddr = net.IPv4(192, 168, 23, byte(index)*2+1)
+			},
 		}
 
 		err := config.SetServerKey(secret)

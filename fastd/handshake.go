@@ -82,6 +82,12 @@ func (srv *Server) handlePacket(msg *Message) (reply *Message) {
 			return nil
 		}
 
+		// Assign interface and addresses
+		peer.Ifname = ifconfig.Clone("fastd")
+		if f := srv.config.AssignAddresses; f != nil {
+			f(peer)
+		}
+
 		// Copy IPv4 addresses into response
 		if peer.IPv4.LocalAddr != nil && peer.IPv4.DestAddr != nil {
 			reply.Records[RECORD_IPV4_ADDR] = []byte(peer.IPv4.DestAddr.To4())
@@ -131,8 +137,6 @@ func (srv *Server) handleFinishHandshake(msg *Message, reply *Message, peer *Pee
 	// Clear handshake keys
 	peer.sharedKey = nil
 	peer.peerHandshakeKey = nil
-
-	peer.Ifname = ifconfig.Clone("fastd")
 
 	if err := SetRemote(peer.Ifname, peer.Remote, peer.PublicKey); err != nil {
 		log.Printf("unable to set remote for %s: %s", peer.Ifname, err)
