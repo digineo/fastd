@@ -7,9 +7,8 @@ import (
 )
 
 type AddressConfig struct {
-	LocalAddr net.IP    // local PTP address
-	DestAddr  net.IP    // remote PTP address
-	Network   net.IPNet // routed network
+	LocalAddr net.IP // local PTP address
+	DestAddr  net.IP // remote PTP address
 }
 
 type Peer struct {
@@ -26,6 +25,9 @@ type Peer struct {
 	IPv4     AddressConfig
 	IPv6     AddressConfig
 	ipackets uint64 // received packet counter
+
+	Vars []byte      // Vars that is sent to the client
+	Data interface{} // Some data that can be attached to the peer
 }
 
 func NewPeer(addr *Sockaddr) *Peer {

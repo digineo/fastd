@@ -19,7 +19,7 @@ func (srv *Server) handlePacket(msg *Message) (reply *Message) {
 		handshakeType = val[0]
 	}
 
-	log.Printf("received handshake %x from %s[%d] using fastd %s", handshakeType, msg.Src.IP.String(), msg.Src.Port, records[RECORD_VERSION_NAME])
+	log.Printf("received handshake %x from %s[%d] using fastd version=%s hostname=%s", handshakeType, msg.Src.IP.String(), msg.Src.Port, records[RECORD_VERSION_NAME], records[RECORD_HOSTNAME])
 
 	senderKey := records[RECORD_SENDER_KEY]
 	recipientKey := records[RECORD_RECIPIENT_KEY]
@@ -86,6 +86,11 @@ func (srv *Server) handlePacket(msg *Message) (reply *Message) {
 		peer.Ifname = ifconfig.Clone("fastd")
 		if f := srv.config.AssignAddresses; f != nil {
 			f(peer)
+		}
+
+		// Copy Vars
+		if peer.Vars != nil {
+			reply.Records[RECORD_VARS] = peer.Vars
 		}
 
 		// Copy IPv4 addresses into response
