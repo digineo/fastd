@@ -213,15 +213,6 @@ struct fastd_control {
 // ------------------------------------------------------------------
 
 
-static inline int
-isIPv4(const struct fastd_inaddr *inaddr){
-	char *buf = (char *) inaddr;
-	return (
-			 (char)0x00 == (buf[0] | buf[1] | buf[2] | buf[3] | buf[4] | buf[5]| buf[6] | buf[7] | buf[8] | buf[9])
-		&& (char)0xff == (buf[10] & buf[11])
-	);
-}
-
 // Copies a fastd_inaddr into a fixed length fastd_sockaddr
 static inline void
 sock_to_inet(struct fastd_inaddr *dst, const union fastd_sockaddr *src){
@@ -244,7 +235,7 @@ sock_to_inet(struct fastd_inaddr *dst, const union fastd_sockaddr *src){
 // Copies a fastd_sockaddr into fastd_inaddr
 static inline void
 inet_to_sock(union fastd_sockaddr *dst, const struct fastd_inaddr *src){
-	if (isIPv4(src)){
+	if (IN6_IS_ADDR_V4MAPPED((struct in6_addr *)src)){
 		// zero struct
 		bzero(dst, sizeof(struct sockaddr_in));
 
