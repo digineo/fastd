@@ -2,6 +2,8 @@ package fastd
 
 import (
 	"fmt"
+	"github.com/digineo/fastd/ifconfig"
+	"log"
 	"sync"
 	"time"
 )
@@ -58,7 +60,13 @@ func NewServer(implName string, config *Config) (srv *Server, err error) {
 
 	// Load existing sessions
 	for _, peer := range srv.impl.Peers() {
-		srv.addPeer(peer)
+		if peer.Remote.Port > 0 {
+			srv.addPeer(peer)
+		} else {
+			// session not established
+			log.Println("destroying unestablished session", peer.Ifname)
+			ifconfig.Destroy(peer.Ifname)
+		}
 	}
 
 	srv.startWorker()
