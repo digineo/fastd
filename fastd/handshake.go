@@ -2,6 +2,7 @@ package fastd
 
 import (
 	"bytes"
+	"encoding/hex"
 	"github.com/digineo/fastd/ifconfig"
 	"log"
 	"reflect"
@@ -39,7 +40,7 @@ func (srv *Server) handlePacket(msg *Message) (reply *Message) {
 	}
 
 	if !bytes.Equal(recipientKey, srv.config.serverKeys.public[:]) {
-		log.Println("recipient key invalid")
+		log.Println("recipient key invalid:", hex.EncodeToString(recipientKey))
 		reply.SetError(REPLY_UNACCEPTABLE_VALUE, RECORD_RECIPIENT_KEY)
 		return
 	}
