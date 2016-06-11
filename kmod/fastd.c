@@ -669,10 +669,13 @@ fastd_recv_data(struct mbuf *m, u_int offset, u_int datalen, const union fastd_s
 			if_inc_counter(sc->ifp, IFCOUNTER_OERRORS, 1);
 			DEBUG(sc->ifp, "fastd keepalive response failed: %d\n", error);
 		} else {
+			DEBUG(sc->ifp, "fastd keepalive replied\n");
 			if_inc_counter(sc->ifp, IFCOUNTER_OPACKETS, 1);
 		}
 		return;
 	}
+
+	DEBUG(sc->ifp, "fastd data reveived\n");
 
 	// Get the IP version number
 	u_int8_t tp;
@@ -776,12 +779,15 @@ fastd_output(struct ifnet *ifp, struct mbuf *m, const struct sockaddr *dst, stru
 	u_int32_t af;
 	int len, error;
 
+	DEBUG(ifp, "fastd_output()\n");
+
 	sc = ifp->if_softc;
 	len = m->m_pkthdr.len;
 
 	rm_rlock(&fastd_lock, &tracker);
 	if ((ifp->if_drv_flags & IFF_DRV_RUNNING) == 0) {
 		error = ENETDOWN;
+		DEBUG(ifp, "fastd_output - netdown\n");
 		goto out;
 	}
 
@@ -798,6 +804,7 @@ fastd_output(struct ifnet *ifp, struct mbuf *m, const struct sockaddr *dst, stru
 	M_PREPEND(m, 1, M_NOWAIT);
 	if (m == NULL) {
 		error = ENOBUFS;
+		DEBUG(ifp, "fastd_output - nobufs\n");
 		goto count;
 	}
 	m->m_data[0] = FASTD_HDR_DATA;
@@ -805,6 +812,7 @@ fastd_output(struct ifnet *ifp, struct mbuf *m, const struct sockaddr *dst, stru
 	error = sosend(sc->socket->socket, (struct sockaddr *)&sc->remote, NULL, m, NULL, 0, curthread);
 	if (!error) {
 		// sosend was successful and already freed the mbuf
+		DEBUG(ifp, "fastd_output - sosend failed\n");
 		m = NULL;
 	}
 
@@ -817,6 +825,7 @@ count:
 		if_inc_counter(ifp, IFCOUNTER_OERRORS, 1);
 
 out:
+	DEBUG(ifp, "fastd_output - unlock\n");
 	rm_runlock(&fastd_lock, &tracker);
 	if (m != NULL)
 		m_freem(m);
@@ -1061,10 +1070,12 @@ fastd_ctrl_set_remote(struct fastd_softc *sc, void *arg)
 	other = fastd_lookup_peer(&sa);
 	if (other != NULL) {
 		if (other != sc) {
+			DEBUG(sc->ifp, "fastd_ctrl_set_remote: address taken\n");
 			error = EADDRNOTAVAIL;
 			goto out;
 		} else if (fastd_sockaddr_equal(&other->remote, &sa)) {
 			// peer has already the address
+			DEBUG(sc->ifp, "fastd_ctrl_set_remote: address already configured\n");
 			goto out;
 		}
 	}
@@ -1073,6 +1084,7 @@ fastd_ctrl_set_remote(struct fastd_softc *sc, void *arg)
 	socket = fastd_find_socket_locked(&sa);
 	if (socket == NULL) {
 		error = EADDRNOTAVAIL;
+		DEBUG(sc->ifp, "fastd_ctrl_set_remote: unable to find socket\n");
 		goto out;
 	}
 
@@ -1112,7 +1124,7 @@ fastd_ioctl_drvspec(struct fastd_softc *sc, struct ifdrv *ifd, int get)
 
 
 	if (ifd->ifd_cmd >= fastd_control_table_size){
-		printf("fastd_ioctl_drvspec() invalid command\n");
+		printf("fastd_ioctl_drvspec() invalid command: %lu\n", ifd->ifd_cmd);
 		return (EINVAL);
 	}
 
@@ -1191,7 +1203,7 @@ fastd_ifioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
 		break;
 	case SIOCGDRVSPEC:
 	case SIOCSDRVSPEC:
-		printf("SIOCGDRVSPEC/SIOCSDRVSPEC ifname=%s cmd=%lx len=%lu\n", ifd->ifd_name, ifd->ifd_cmd, ifd->ifd_len);
+		//printf("SIOCGDRVSPEC/SIOCSDRVSPEC ifname=%s cmd=%lx len=%lu\n", ifd->ifd_name, ifd->ifd_cmd, ifd->ifd_len);
 		error = fastd_ioctl_drvspec(sc, ifd, cmd == SIOCGDRVSPEC);
 		break;
 	case SIOCSIFFLAGS:
