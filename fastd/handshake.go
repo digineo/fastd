@@ -80,6 +80,7 @@ func (srv *Server) handlePacket(msg *Message) (reply *Message) {
 	switch handshakeType {
 	case 1:
 		if !srv.verifyPeer(peer) {
+			log.Println("verify failed for pubkey", hex.EncodeToString(senderKey))
 			return nil
 		}
 

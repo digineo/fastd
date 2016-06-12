@@ -812,8 +812,9 @@ fastd_output(struct ifnet *ifp, struct mbuf *m, const struct sockaddr *dst, stru
 	error = sosend(sc->socket->socket, (struct sockaddr *)&sc->remote, NULL, m, NULL, 0, curthread);
 	if (!error) {
 		// sosend was successful and already freed the mbuf
-		DEBUG(ifp, "fastd_output - sosend failed\n");
 		m = NULL;
+	} else {
+		DEBUG(ifp, "fastd_output - sosend failed with %d\n", error);
 	}
 
 count:

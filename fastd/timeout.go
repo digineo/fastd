@@ -50,7 +50,7 @@ func (srv *Server) timeoutPeers() {
 func (peer *Peer) updateCounter(now time.Time) bool {
 	stats, err := GetStats(peer.Ifname)
 	if err != nil {
-		log.Println("Unable to get stats for %s: %s", peer.Ifname, err)
+		log.Printf("Unable to get stats for %s: %s", peer.Ifname, err)
 		return false
 	}
 
