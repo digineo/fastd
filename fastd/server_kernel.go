@@ -113,35 +113,34 @@ func (srv *KernelServer) readPackets() error {
 	}
 
 	for {
-		num, _, errno := syscall.Syscall(syscall.SYS_POLL, uintptr(unsafe.Pointer(&pollFd)), uintptr(1), 60*1000)
-
-		if errno != 0 {
-			return fmt.Errorf("syscall.SYS_POLL failed: %d", errno)
-		}
-
-		if num < 0 {
-			return fmt.Errorf("poll failed: %d", num)
-		}
-
-		if num > 0 && pollFd.revents&POLLHUP > 0 {
-			// disconnected
-			log.Println("device closed")
-			return nil
-		}
-
 		n, err := srv.dev.Read(buf)
-		if err == io.EOF {
-			continue
-		}
-		if err != nil {
+
+		switch err {
+		case nil:
+			data := make([]byte, n)
+			copy(data, buf[:n])
+			if err = srv.read(data); err != nil {
+				log.Println(err)
+			}
+		case io.EOF:
+			num, _, errno := syscall.Syscall(syscall.SYS_POLL, uintptr(unsafe.Pointer(&pollFd)), uintptr(1), 60*1000)
+
+			if errno != 0 {
+				return fmt.Errorf("syscall.SYS_POLL failed: %d", errno)
+			}
+
+			if num < 0 {
+				return fmt.Errorf("poll failed: %d", num)
+			}
+
+			if num > 0 && pollFd.revents&POLLHUP > 0 {
+				// disconnected
+				return fmt.Errorf("device closed")
+			}
+		default:
 			return err
 		}
 
-		data := make([]byte, n)
-		copy(data, buf[:n])
-		if err = srv.read(data); err != nil {
-			log.Println(err)
-		}
 	}
 }
 
