@@ -25,6 +25,10 @@ func Destroy(name string) {
 	// TODO
 }
 
-func SetAddr(ifname string, addr, dstaddr *syscall.RawSockaddrAny) (err error) {
+func SetAddrPTP(ifname string, addr, dstaddr *syscall.RawSockaddrAny) (err error) {
+	return errors.New("not implemented")
+}
+
+func SetAddr(ifname string, addr *syscall.RawSockaddrAny, prefixlen uint8) (err error) {
 	return errors.New("not implemented")
 }

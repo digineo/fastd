@@ -37,6 +37,8 @@ const (
 	RECORD_IPV6_PREFIXLEN
 	RECORD_VARS
 	RECORD_HOSTNAME
+
+	RECORD_MAX
 )
 
 const (
@@ -45,7 +47,7 @@ const (
 	REPLY_UNACCEPTABLE_VALUE
 )
 
-type Records map[TLV_KEY][]byte
+type Records [RECORD_MAX][]byte
 
 type Message struct {
 	Src     *Sockaddr
@@ -56,15 +58,9 @@ type Message struct {
 	raw     []byte
 }
 
-func NewMessage() *Message {
-	return &Message{
-		Records: make(Records),
-	}
-}
-
 // Creates a reply to the message
 func (msg *Message) NewReply() *Message {
-	reply := NewMessage()
+	reply := &Message{}
 	reply.Type = 0x01
 	reply.Src = msg.Dst
 	reply.Dst = msg.Src
@@ -96,7 +92,7 @@ func (msg *Message) VerifySignature() bool {
 }
 
 func ParseMessage(buf []byte, includeSockaddr bool) (*Message, error) {
-	msg := NewMessage()
+	msg := &Message{}
 	offset := 0
 	if includeSockaddr {
 		if len(buf) < 40 {
@@ -149,7 +145,9 @@ func (msg *Message) MarshalPayload(out []byte) int {
 
 	// Append records
 	for key, val := range msg.Records {
-		addRecord(key, val)
+		if val != nil {
+			addRecord(TLV_KEY(key), val)
+		}
 	}
 
 	// Add HMAC (optional)
@@ -185,6 +183,11 @@ func (msg *Message) Unmarshal(data []byte) (err error) {
 	for len(data) >= 4 {
 		typ := TLV_KEY(binary.LittleEndian.Uint16(data[0:2]))
 		length = binary.LittleEndian.Uint16(data[2:4])
+
+		if typ >= RECORD_MAX {
+			// unsupported field
+			continue
+		}
 
 		// Shift Type+Length
 		data = data[4:]

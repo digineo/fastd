@@ -13,8 +13,9 @@ int if_clone(char*);
 int if_destroy(char*);
 int remove_addr4(char*);
 int remove_addr6(char*, struct sockaddr_in6*);
-int add_addr4(char*, struct sockaddr_in*, struct sockaddr_in*);
-int add_addr6(char*, struct sockaddr_in6*, struct sockaddr_in6*);
+int add_addr4_ptp(char*, struct sockaddr_in*, struct sockaddr_in*);
+int add_addr6_ptp(char*, struct sockaddr_in6*, struct sockaddr_in6*);
+int add_addr6(char*, struct sockaddr_in6*, uint8_t);
 int get_drv_spec(char*, unsigned long, void *, size_t);
 int set_drv_spec(char*, unsigned long, void *, size_t);
 

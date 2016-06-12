@@ -34,11 +34,19 @@ mask32(struct sockaddr_in *sa){
 	memset(&sa->sin_addr, '\xff', sizeof(struct in_addr));
 }
 
+// Sets a variable prefixlen
 static inline void
-mask128(struct sockaddr_in6 *sa){
+mask128(struct sockaddr_in6 *sa, uint8_t len){
+	u_char *cp;
+
 	sa->sin6_len    = sizeof(struct sockaddr_in6);
 	sa->sin6_family = AF_INET6;
-	memset(&sa->sin6_addr, '\xff', sizeof(struct in6_addr));
+
+
+	memset((void *)&sa->sin6_addr, 0x00, sizeof(sa->sin6_addr));
+	for (cp = (u_char *)&sa->sin6_addr; len > 7; len -= 8)
+		*cp++ = 0xff;
+	*cp = 0xff << (8 - len);
 }
 
 int
@@ -89,7 +97,7 @@ remove_addr6(char* ifname, struct sockaddr_in6 *addr)
 }
 
 int
-add_addr4(char* ifname, struct sockaddr_in *addr, struct sockaddr_in *dstaddr)
+add_addr4_ptp(char* ifname, struct sockaddr_in *addr, struct sockaddr_in *dstaddr)
 {
 	struct ifaliasreq req;
 	bzero(&req, sizeof(req));
@@ -103,7 +111,7 @@ add_addr4(char* ifname, struct sockaddr_in *addr, struct sockaddr_in *dstaddr)
 }
 
 int
-add_addr6(char* ifname, struct sockaddr_in6 *addr, struct sockaddr_in6 *dstaddr)
+add_addr6_ptp(char* ifname, struct sockaddr_in6 *addr, struct sockaddr_in6 *dstaddr)
 {
 	struct in6_aliasreq req;
 	bzero(&req, sizeof(req));
@@ -111,7 +119,24 @@ add_addr6(char* ifname, struct sockaddr_in6 *addr, struct sockaddr_in6 *dstaddr)
 	strncpy(req.ifra_name,    ifname,  sizeof(req.ifra_name));
 	memcpy(&req.ifra_addr,    addr,    sizeof(struct sockaddr_in6));
 	memcpy(&req.ifra_dstaddr, dstaddr, sizeof(struct sockaddr_in6));
-	mask128(&req.ifra_prefixmask);
+	mask128(&req.ifra_prefixmask, 128);
+
+	req.ifra_lifetime.ia6t_vltime = ND6_INFINITE_LIFETIME;
+	req.ifra_lifetime.ia6t_pltime = ND6_INFINITE_LIFETIME;
+
+	return ioctl(ioctl_fd6, SIOCAIFADDR_IN6, &req);
+}
+
+// Add a /64 IPv6 address
+int
+add_addr6(char* ifname, struct sockaddr_in6 *addr, uint8_t prefixlen)
+{
+	struct in6_aliasreq req;
+	bzero(&req, sizeof(req));
+
+	strncpy(req.ifra_name,    ifname,  sizeof(req.ifra_name));
+	memcpy(&req.ifra_addr,    addr,    sizeof(struct sockaddr_in6));
+	mask128(&req.ifra_prefixmask, prefixlen);
 
 	req.ifra_lifetime.ia6t_vltime = ND6_INFINITE_LIFETIME;
 	req.ifra_lifetime.ia6t_pltime = ND6_INFINITE_LIFETIME;

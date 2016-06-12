@@ -75,7 +75,27 @@ func Destroy(name string) error {
 	}
 }
 
-func SetAddr(ifname string, addr, dstaddr *syscall.RawSockaddrAny) (err error) {
+func SetAddr(ifname string, addr *syscall.RawSockaddrAny, prefixlen uint8) (err error) {
+	var res uintptr
+	name := C.CString(ifname)
+	defer C.free(unsafe.Pointer(name))
+
+	switch addr.Addr.Family {
+	case syscall.AF_INET6:
+		addr_sa := (*C.struct_sockaddr_in6)(unsafe.Pointer(addr))
+		res = uintptr(C.add_addr6(name, addr_sa, C.uint8_t(prefixlen)))
+	default:
+		return syscall.EAFNOSUPPORT
+	}
+
+	if res != 0 {
+		err = syscall.Errno(res)
+	}
+
+	return
+}
+
+func SetAddrPTP(ifname string, addr, dstaddr *syscall.RawSockaddrAny) (err error) {
 	var res uintptr
 	name := C.CString(ifname)
 	defer C.free(unsafe.Pointer(name))
@@ -85,12 +105,12 @@ func SetAddr(ifname string, addr, dstaddr *syscall.RawSockaddrAny) (err error) {
 		C.remove_addr4(name)
 		addr_sa := (*C.struct_sockaddr_in)(unsafe.Pointer(addr))
 		dstaddr_sa := (*C.struct_sockaddr_in)(unsafe.Pointer(dstaddr))
-		res = uintptr(C.add_addr4(name, addr_sa, dstaddr_sa))
+		res = uintptr(C.add_addr4_ptp(name, addr_sa, dstaddr_sa))
 	case syscall.AF_INET6:
 		addr_sa := (*C.struct_sockaddr_in6)(unsafe.Pointer(addr))
 		dstaddr_sa := (*C.struct_sockaddr_in6)(unsafe.Pointer(dstaddr))
 		C.remove_addr6(name, addr_sa)
-		res = uintptr(C.add_addr6(name, addr_sa, dstaddr_sa))
+		res = uintptr(C.add_addr6_ptp(name, addr_sa, dstaddr_sa))
 	default:
 		return syscall.EAFNOSUPPORT
 	}

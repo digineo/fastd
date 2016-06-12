@@ -88,7 +88,7 @@ func (srv *Server) removePeerLocked(peer *Peer) {
 // Set local and destination address for the PTP interface
 func (peer *Peer) SetAddresses(config AddressConfig) error {
 	if config.LocalAddr != nil && config.DestAddr != nil {
-		return SetAddr(peer.Ifname, config.LocalAddr, config.DestAddr)
+		return SetAddrPTP(peer.Ifname, config.LocalAddr, config.DestAddr)
 	} else {
 		return nil
 	}
