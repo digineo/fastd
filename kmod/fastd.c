@@ -169,8 +169,8 @@ static struct fastd_socket* fastd_find_socket(const union fastd_sockaddr*);
 static struct fastd_socket* fastd_find_socket_locked(const union fastd_sockaddr*);
 static int fastd_send_packet(struct uio *uio);
 
-static void fastd_rcv_udp_packet(struct mbuf *, int, struct inpcb *, const struct sockaddr *, void *);
-static void fastd_recv_data(struct mbuf *, u_int, u_int, const union fastd_sockaddr *, struct fastd_socket *);
+static void	fastd_rcv_udp_packet(struct mbuf *, int, struct inpcb *, const struct sockaddr *, void *);
+static void	fastd_recv_data(struct mbuf *, u_int, u_int, const union fastd_sockaddr *, struct fastd_socket *);
 
 static struct rmlock fastd_lock;
 static const char fastdname[] = "fastd";
@@ -182,9 +182,12 @@ static int  fastd_ifioctl(struct ifnet *, u_long, caddr_t);
 static int  fastd_ioctl_drvspec(struct fastd_softc *, struct ifdrv *, int);
 static struct if_clone *fastd_cloner;
 
-static int	fastd_output(struct ifnet *, struct mbuf *, const struct sockaddr *, struct route *ro);
 static void	fastd_ifinit(struct ifnet *);
-static void fastd_ifstart(struct ifnet *);
+static void	fastd_ifstart(struct ifnet *);
+static int	fastd_output(struct ifnet *, struct mbuf *, const struct sockaddr *, struct route *ro);
+static void	fastd_encap_header(struct fastd_softc *, struct mbuf *, int, uint16_t, uint16_t);
+static int	fastd_encap4(struct fastd_softc *, const union fastd_sockaddr *, struct mbuf *);
+static int	fastd_encap6(struct fastd_softc *, const union fastd_sockaddr *, struct mbuf *);
 
 static void fastd_add_peer(struct fastd_softc *);
 static void fastd_remove_peer(struct fastd_softc *);
@@ -576,6 +579,145 @@ fastd_find_socket_locked(const union fastd_sockaddr *sa){
 	return NULL;
 }
 
+inline static int
+fastd_encap(struct fastd_softc *sc, const union fastd_sockaddr *dst, struct mbuf *m)
+{
+
+	if (dst->sa.sa_family == AF_INET)
+		return fastd_encap4(sc, dst, m);
+	else
+		return fastd_encap6(sc, dst, m);
+}
+
+
+
+static void
+fastd_encap_header(struct fastd_softc *sc, struct mbuf *m, int ipoff,
+    uint16_t srcport, uint16_t dstport)
+{
+	struct fastdudphdr *hdr;
+	struct udphdr *udph;
+	int len;
+
+	len = m->m_pkthdr.len - ipoff;
+	MPASS(len >= sizeof(struct fastdudphdr));
+	hdr = mtodo(m, ipoff);
+
+	udph = &hdr->fastd_udp;
+	udph->uh_sport = srcport;
+	udph->uh_dport = dstport;
+	udph->uh_ulen = htons(len);
+	udph->uh_sum = 0;
+
+	// Set fastd packet type to data
+	hdr->type = FASTD_HDR_DATA;
+}
+
+static int
+fastd_encap4(struct fastd_softc *sc, const union fastd_sockaddr *dst, struct mbuf *m)
+{
+	struct ifnet *ifp;
+	struct ip *ip;
+	struct in_addr srcaddr, dstaddr;
+	uint16_t srcport, dstport;
+	int len, error;
+
+	ifp = sc->ifp;
+	DEBUG(ifp, "fastd_encap4\n");
+
+	srcaddr = sc->socket->laddr.in4.sin_addr;
+	srcport = sc->socket->laddr.in4.sin_port;
+	dstaddr = dst->in4.sin_addr;
+	dstport = dst->in4.sin_port;
+
+	M_PREPEND(m, sizeof(struct ip) + sizeof(struct fastdudphdr), M_NOWAIT);
+	if (m == NULL) {
+		if_inc_counter(ifp, IFCOUNTER_OERRORS, 1);
+		return (ENOBUFS);
+	}
+
+	len = m->m_pkthdr.len;
+
+	ip = mtod(m, struct ip *);
+	ip->ip_tos = 0;
+	ip->ip_len = htons(len);
+	ip->ip_off = 0;
+	ip->ip_ttl = IPDEFTTL;
+	ip->ip_p   = IPPROTO_UDP;
+	ip->ip_sum = 0;
+	ip->ip_src = srcaddr;
+	ip->ip_dst = dstaddr;
+
+	fastd_encap_header(sc, m, sizeof(struct ip), srcport, dstport);
+
+	error = ip_output(m, NULL, NULL, 0, NULL, NULL);
+	if (error == 0) {
+		if_inc_counter(ifp, IFCOUNTER_OPACKETS, 1);
+		if_inc_counter(ifp, IFCOUNTER_OBYTES, len);
+	} else
+		if_inc_counter(ifp, IFCOUNTER_OERRORS, 1);
+
+	return (error);
+}
+
+static int
+fastd_encap6(struct fastd_softc *sc, const union fastd_sockaddr *dst, struct mbuf *m)
+{
+	struct ifnet *ifp;
+	struct ip6_hdr *ip6;
+	const struct in6_addr *srcaddr, *dstaddr;
+	uint16_t srcport, dstport;
+	int len, error;
+
+	ifp = sc->ifp;
+	DEBUG(ifp, "fastd_encap6\n");
+
+	srcaddr = &sc->socket->laddr.in6.sin6_addr;
+	srcport = sc->socket->laddr.in6.sin6_port;
+	dstaddr = &dst->in6.sin6_addr;
+	dstport = dst->in6.sin6_port;
+
+	M_PREPEND(m, sizeof(struct ip6_hdr) + sizeof(struct fastdudphdr), M_NOWAIT);
+	if (m == NULL) {
+		if_inc_counter(ifp, IFCOUNTER_OERRORS, 1);
+		return (ENOBUFS);
+	}
+
+	len = m->m_pkthdr.len;
+
+	ip6 = mtod(m, struct ip6_hdr *);
+	ip6->ip6_flow = 0;
+	ip6->ip6_vfc  = IPV6_VERSION;
+	ip6->ip6_plen = 0;
+	ip6->ip6_nxt  = IPPROTO_UDP;
+	ip6->ip6_hlim = IPDEFTTL;
+	ip6->ip6_src  = *srcaddr;
+	ip6->ip6_dst  = *dstaddr;
+
+	fastd_encap_header(sc, m, sizeof(struct ip6_hdr), srcport, dstport);
+
+	/*
+	 * XXX BMV We need support for RFC6935 before we can send and
+	 * receive IPv6 UDP packets with a zero checksum.
+	 */
+	{
+		struct udphdr *hdr = mtodo(m, sizeof(struct ip6_hdr));
+		hdr->uh_sum = in6_cksum_pseudo(ip6, m->m_pkthdr.len - sizeof(struct ip6_hdr), IPPROTO_UDP, 0);
+		m->m_pkthdr.csum_flags = CSUM_UDP_IPV6;
+		m->m_pkthdr.csum_data = offsetof(struct udphdr, uh_sum);
+	}
+
+	error = ip6_output(m, NULL, NULL, 0, NULL, NULL, NULL);
+	if (error == 0) {
+		if_inc_counter(ifp, IFCOUNTER_OPACKETS, 1);
+		if_inc_counter(ifp, IFCOUNTER_OBYTES, len);
+	} else
+		if_inc_counter(ifp, IFCOUNTER_OERRORS, 1);
+
+	return (error);
+}
+
+
 static void
 fastd_rcv_udp_packet(struct mbuf *m, int offset, struct inpcb *inpcb,
 		const struct sockaddr *sa_src, void *xfso)
@@ -658,19 +800,17 @@ fastd_recv_data(struct mbuf *m, u_int offset, u_int datalen, const union fastd_s
 
 	if (datalen == 1){
 		// Keepalive packet
+		DEBUG(sc->ifp, "fastd keepalive respond\n");
 		if_inc_counter(sc->ifp, IFCOUNTER_IPACKETS, 1);
 
-		m->m_len = m->m_pkthdr.len = 1;
-		m->m_data[0] = FASTD_HDR_DATA;
-		int error = sosend(socket->socket, (struct sockaddr *)sa_src, NULL, m, NULL, 0, curthread);
+		// Remove headers, which results in an empty packet
+		m_adj(m, offset+1);
+		int error = fastd_encap(sc, sa_src, m);
 
 		if (error){
-			m_freem(m);
-			if_inc_counter(sc->ifp, IFCOUNTER_OERRORS, 1);
 			DEBUG(sc->ifp, "fastd keepalive response failed: %d\n", error);
 		} else {
 			DEBUG(sc->ifp, "fastd keepalive replied\n");
-			if_inc_counter(sc->ifp, IFCOUNTER_OPACKETS, 1);
 		}
 		return;
 	}
@@ -758,7 +898,9 @@ fastd_send_packet(struct uio *uio) {
 	}
 
 	// Send packet
+	printf("fastd_send_packet: sosend()\n");
 	error = sosend(sock->socket, &dst_addr.sa, NULL, m, NULL, 0, uio->uio_td);
+	printf("fastd_send_packet: sosend() result: %d\n", error);
 	if (error != 0){
 		goto fail;
 	}
@@ -770,14 +912,14 @@ out:
 	return (error);
 }
 
-
 static int
 fastd_output(struct ifnet *ifp, struct mbuf *m, const struct sockaddr *dst, struct route *ro)
 {
 	struct rm_priotracker tracker;
+	union fastd_sockaddr remote;
 	struct fastd_softc *sc;
 	u_int32_t af;
-	int len, error;
+	int len;
 
 	DEBUG(ifp, "fastd_output()\n");
 
@@ -786,9 +928,10 @@ fastd_output(struct ifnet *ifp, struct mbuf *m, const struct sockaddr *dst, stru
 
 	rm_rlock(&fastd_lock, &tracker);
 	if ((ifp->if_drv_flags & IFF_DRV_RUNNING) == 0) {
-		error = ENETDOWN;
+		rm_runlock(&fastd_lock, &tracker);
+		m_freem(m);
 		DEBUG(ifp, "fastd_output - netdown\n");
-		goto out;
+		return ENETDOWN;
 	}
 
 	/* BPF writes need to be handled specially. */
@@ -797,43 +940,14 @@ fastd_output(struct ifnet *ifp, struct mbuf *m, const struct sockaddr *dst, stru
 	else
 		af = dst->sa_family;
 
+	fastd_sockaddr_copy(&remote, &sc->remote);
+	rm_runlock(&fastd_lock, &tracker);
+
 	// Pass to Berkeley Packet Filter
 	BPF_MTAP2(ifp, &af, sizeof(af), m);
 
-	// Add fastd header
-	M_PREPEND(m, 1, M_NOWAIT);
-	if (m == NULL) {
-		error = ENOBUFS;
-		DEBUG(ifp, "fastd_output - nobufs\n");
-		goto count;
-	}
-	m->m_data[0] = FASTD_HDR_DATA;
-
-	error = sosend(sc->socket->socket, (struct sockaddr *)&sc->remote, NULL, m, NULL, 0, curthread);
-	if (!error) {
-		// sosend was successful and already freed the mbuf
-		m = NULL;
-	} else {
-		DEBUG(ifp, "fastd_output - sosend failed with %d\n", error);
-	}
-
-count:
-	// Update interface counters
-	if (error == 0) {
-		if_inc_counter(ifp, IFCOUNTER_OPACKETS, 1);
-		if_inc_counter(ifp, IFCOUNTER_OBYTES, len);
-	} else
-		if_inc_counter(ifp, IFCOUNTER_OERRORS, 1);
-
-out:
-	DEBUG(ifp, "fastd_output - unlock\n");
-	rm_runlock(&fastd_lock, &tracker);
-	if (m != NULL)
-		m_freem(m);
-
-	return (error);
+	return fastd_encap(sc, &remote, m);
 }
-
 
 static void
 fastd_ifstart(struct ifnet *ifp __unused)
