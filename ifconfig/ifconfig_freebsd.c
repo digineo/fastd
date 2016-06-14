@@ -56,7 +56,7 @@ if_clone(char* ifname, void* data)
 	struct ifreq ifr;
 
 	bzero(&ifr, sizeof(ifr));
-	strncpy(ifr.ifr_name, ifname, sizeof(ifr.ifr_name));
+	strlcpy(ifr.ifr_name, ifname, sizeof(ifr.ifr_name));
 
 	if (data) {
 		ifr.ifr_data = data;
@@ -65,7 +65,7 @@ if_clone(char* ifname, void* data)
 		result = ioctl(ioctl_fd4, SIOCIFCREATE, &ifr);
 	}
 
-	strncpy(ifname, ifr.ifr_name, sizeof(ifr.ifr_name));
+	strlcpy(ifname, ifr.ifr_name, sizeof(ifr.ifr_name));
 
 	return result;
 }
@@ -76,7 +76,7 @@ if_destroy(char* ifname)
 	struct ifreq ifr;
 
 	bzero(&ifr, sizeof(ifr));
-	strncpy(ifr.ifr_name, ifname, sizeof(ifr.ifr_name));
+	strlcpy(ifr.ifr_name, ifname, sizeof(ifr.ifr_name));
 
 	return ioctl(ioctl_fd4, SIOCIFDESTROY, &ifr);
 }
@@ -86,7 +86,7 @@ remove_addr4(char* ifname)
 {
 	struct ifreq ifr;
 	bzero(&ifr, sizeof(ifr));
-	strncpy(ifr.ifr_name, ifname, sizeof(ifr.ifr_name));
+	strlcpy(ifr.ifr_name, ifname, sizeof(ifr.ifr_name));
 
 	return ioctl(ioctl_fd4, SIOCDIFADDR, &ifr);
 }
@@ -96,7 +96,7 @@ remove_addr6(char* ifname, struct sockaddr_in6 *addr)
 {
 	struct in6_ifreq req;
 	bzero(&req, sizeof(req));
-	strncpy(req.ifr_name, ifname, sizeof(req.ifr_name));
+	strlcpy(req.ifr_name, ifname, sizeof(req.ifr_name));
 	memcpy(&req.ifr_addr, addr, sizeof(struct sockaddr_in6));
 
 	return ioctl(ioctl_fd6, SIOCDIFADDR_IN6, &req);
@@ -108,7 +108,7 @@ add_addr4_ptp(char* ifname, struct sockaddr_in *addr, struct sockaddr_in *dstadd
 	struct ifaliasreq req;
 	bzero(&req, sizeof(req));
 
-	strncpy(req.ifra_name,      ifname,  sizeof(req.ifra_name));
+	strlcpy(req.ifra_name,      ifname,  sizeof(req.ifra_name));
 	memcpy(&req.ifra_addr,      addr,    sizeof(struct sockaddr));
 	memcpy(&req.ifra_broadaddr, dstaddr, sizeof(struct sockaddr));
 	mask32((struct sockaddr_in *)&req.ifra_mask);
@@ -122,7 +122,7 @@ add_addr6_ptp(char* ifname, struct sockaddr_in6 *addr, struct sockaddr_in6 *dsta
 	struct in6_aliasreq req;
 	bzero(&req, sizeof(req));
 
-	strncpy(req.ifra_name,    ifname,  sizeof(req.ifra_name));
+	strlcpy(req.ifra_name,    ifname,  sizeof(req.ifra_name));
 	memcpy(&req.ifra_addr,    addr,    sizeof(struct sockaddr_in6));
 	memcpy(&req.ifra_dstaddr, dstaddr, sizeof(struct sockaddr_in6));
 	mask128(&req.ifra_prefixmask, 128);
@@ -140,7 +140,7 @@ add_addr6(char* ifname, struct sockaddr_in6 *addr, uint8_t prefixlen)
 	struct in6_aliasreq req;
 	bzero(&req, sizeof(req));
 
-	strncpy(req.ifra_name,    ifname,  sizeof(req.ifra_name));
+	strlcpy(req.ifra_name,    ifname,  sizeof(req.ifra_name));
 	memcpy(&req.ifra_addr,    addr,    sizeof(struct sockaddr_in6));
 	mask128(&req.ifra_prefixmask, prefixlen);
 
@@ -158,7 +158,7 @@ int get_drv_spec(char* ifname, unsigned long cmd, void *data, size_t len)
 	ifd.ifd_cmd  = cmd;
 	ifd.ifd_data = data;
 	ifd.ifd_len  = len;
-	strncpy(ifd.ifd_name, ifname, sizeof(ifd.ifd_name));
+	strlcpy(ifd.ifd_name, ifname, sizeof(ifd.ifd_name));
 
 	return ioctl(ioctl_fd4, SIOCGDRVSPEC, &ifd);
 }
@@ -171,7 +171,7 @@ int set_drv_spec(char* ifname, unsigned long cmd, void *data, size_t len)
 	ifd.ifd_cmd  = cmd;
 	ifd.ifd_data = data;
 	ifd.ifd_len  = len;
-	strncpy(ifd.ifd_name, ifname, sizeof(ifd.ifd_name));
+	strlcpy(ifd.ifd_name, ifname, sizeof(ifd.ifd_name));
 
 	return ioctl(ioctl_fd4, SIOCSDRVSPEC, &ifd);
 }
