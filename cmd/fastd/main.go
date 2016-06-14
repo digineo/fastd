@@ -29,7 +29,7 @@ func main() {
 		// Parse flags
 		flags := flag.NewFlagSet("fastd", flag.ExitOnError)
 		flags.StringVar(&implName, "impl", "udp", "Implementation type: udp or kernel")
-		flags.StringVar(&listenAddr, "address", "0.0.0.0", "Listening address")
+		flags.StringVar(&listenAddr, "address", "127.0.0.1", "Listening address")
 		flags.StringVar(&secret, "secret", "", "Secret key")
 		flags.UintVar(&listenPort, "port", 10000, "Listening port")
 		flags.Parse(args)

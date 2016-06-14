@@ -303,6 +303,19 @@ fastd_sockaddr_equal(const union fastd_sockaddr *a, const union fastd_sockaddr *
 	}
 }
 
+// Returns whether the given IP address is unspecified
+static inline int
+fastd_sockaddr_unspecified(const union fastd_sockaddr *sa)
+{
+	switch (sa->sa.sa_family) {
+	case AF_INET:
+		return sa->in4.sin_addr.s_addr == 0;
+	case AF_INET6:
+		return IN6_IS_ADDR_UNSPECIFIED(&sa->in6.sin6_addr);
+	default:
+		return -1;
+	}
+}
 
 
 // ------------------------------------------------------------------
@@ -473,6 +486,10 @@ static int
 fastd_bind_socket(union fastd_sockaddr *sa){
 	int error;
 	struct fastd_socket *sock;
+
+	if (fastd_sockaddr_unspecified(sa)){
+		return EADDRNOTAVAIL;
+	}
 
 	sock = malloc(sizeof(*sock), M_FASTD, M_WAITOK | M_ZERO);
 	fastd_sockaddr_copy(&sock->laddr, sa);
