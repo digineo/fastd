@@ -44,7 +44,11 @@
 
 #include "fastd.h"
 
-#define DEBUG	if_printf
+#ifdef DEBUG
+#define IFP_DEBUG(ifp, fmt, ...) if_printf(ifp, "%s(): " fmt "\n", __func__, ##__VA_ARGS__);
+#else
+#define IFP_DEBUG(...)
+#endif
 
 /* Maximum output packet size (default) */
 #define	FASTD_MTU		1406
@@ -623,7 +627,6 @@ fastd_encap4(struct fastd_softc *sc, const union fastd_sockaddr *dst, struct mbu
 	int len, error;
 
 	ifp = sc->ifp;
-	DEBUG(ifp, "fastd_encap4\n");
 
 	srcaddr = sc->socket->laddr.in4.sin_addr;
 	srcport = sc->socket->laddr.in4.sin_port;
@@ -632,6 +635,7 @@ fastd_encap4(struct fastd_softc *sc, const union fastd_sockaddr *dst, struct mbu
 
 	M_PREPEND(m, sizeof(struct ip) + sizeof(struct fastdudphdr), M_NOWAIT);
 	if (m == NULL) {
+		IFP_DEBUG(ifp, "ENOBUFS");
 		if_inc_counter(ifp, IFCOUNTER_OERRORS, 1);
 		return (ENOBUFS);
 	}
@@ -670,7 +674,6 @@ fastd_encap6(struct fastd_softc *sc, const union fastd_sockaddr *dst, struct mbu
 	int len, error;
 
 	ifp = sc->ifp;
-	DEBUG(ifp, "fastd_encap6\n");
 
 	srcaddr = &sc->socket->laddr.in6.sin6_addr;
 	srcport = sc->socket->laddr.in6.sin6_port;
@@ -679,6 +682,7 @@ fastd_encap6(struct fastd_softc *sc, const union fastd_sockaddr *dst, struct mbu
 
 	M_PREPEND(m, sizeof(struct ip6_hdr) + sizeof(struct fastdudphdr), M_NOWAIT);
 	if (m == NULL) {
+		IFP_DEBUG(ifp, "ENOBUFS");
 		if_inc_counter(ifp, IFCOUNTER_OERRORS, 1);
 		return (ENOBUFS);
 	}
@@ -800,7 +804,7 @@ fastd_recv_data(struct mbuf *m, u_int offset, u_int datalen, const union fastd_s
 
 	if (datalen == 1){
 		// Keepalive packet
-		DEBUG(sc->ifp, "fastd keepalive respond\n");
+		IFP_DEBUG(sc->ifp, "keepalive received");
 		if_inc_counter(sc->ifp, IFCOUNTER_IPACKETS, 1);
 
 		// Remove headers, which results in an empty packet
@@ -808,14 +812,14 @@ fastd_recv_data(struct mbuf *m, u_int offset, u_int datalen, const union fastd_s
 		int error = fastd_encap(sc, sa_src, m);
 
 		if (error){
-			DEBUG(sc->ifp, "fastd keepalive response failed: %d\n", error);
+			IFP_DEBUG(sc->ifp, "keepalive response failed: %d", error);
 		} else {
-			DEBUG(sc->ifp, "fastd keepalive replied\n");
+			IFP_DEBUG(sc->ifp, "keepalive replied");
 		}
 		return;
 	}
 
-	DEBUG(sc->ifp, "fastd data reveived\n");
+	IFP_DEBUG(sc->ifp, "data reveived");
 
 	// Get the IP version number
 	u_int8_t tp;
@@ -833,7 +837,7 @@ fastd_recv_data(struct mbuf *m, u_int offset, u_int datalen, const union fastd_s
 		break;
 	default:
 		if_inc_counter(sc->ifp, IFCOUNTER_IERRORS, 1);
-		DEBUG(sc->ifp, "unknown ip version: %02x\n", tp );
+		IFP_DEBUG(sc->ifp, "unknown ip version: %02x", tp );
 		m_freem(m);
 		return;
 	}
@@ -921,8 +925,6 @@ fastd_output(struct ifnet *ifp, struct mbuf *m, const struct sockaddr *dst, stru
 	u_int32_t af;
 	int len;
 
-	DEBUG(ifp, "fastd_output()\n");
-
 	sc = ifp->if_softc;
 	len = m->m_pkthdr.len;
 
@@ -930,7 +932,7 @@ fastd_output(struct ifnet *ifp, struct mbuf *m, const struct sockaddr *dst, stru
 	if ((ifp->if_drv_flags & IFF_DRV_RUNNING) == 0) {
 		rm_runlock(&fastd_lock, &tracker);
 		m_freem(m);
-		DEBUG(ifp, "fastd_output - netdown\n");
+		IFP_DEBUG(ifp, "netdown");
 		return ENETDOWN;
 	}
 
@@ -1112,7 +1114,7 @@ fastd_ifinit(struct ifnet *ifp)
 {
 	struct fastd_softc *sc = ifp->if_softc;
 
-	DEBUG(ifp, "ifinit\n");
+	IFP_DEBUG(ifp, "initializing");
 
 	mtx_lock(&sc->mtx);
 	ifp->if_flags |= IFF_UP;
@@ -1185,12 +1187,12 @@ fastd_ctrl_set_remote(struct fastd_softc *sc, void *arg)
 	other = fastd_lookup_peer(&sa);
 	if (other != NULL) {
 		if (other != sc) {
-			DEBUG(sc->ifp, "fastd_ctrl_set_remote: address taken\n");
+			IFP_DEBUG(sc->ifp, "address taken");
 			error = EADDRNOTAVAIL;
 			goto out;
 		} else if (fastd_sockaddr_equal(&other->remote, &sa)) {
 			// peer has already the address
-			DEBUG(sc->ifp, "fastd_ctrl_set_remote: address already configured\n");
+			IFP_DEBUG(sc->ifp, "address already configured");
 			goto out;
 		}
 	}
@@ -1199,7 +1201,7 @@ fastd_ctrl_set_remote(struct fastd_softc *sc, void *arg)
 	socket = fastd_find_socket_locked(&sa);
 	if (socket == NULL) {
 		error = EADDRNOTAVAIL;
-		DEBUG(sc->ifp, "fastd_ctrl_set_remote: unable to find socket\n");
+		IFP_DEBUG(sc->ifp, "unable to find socket");
 		goto out;
 	}
 
@@ -1307,7 +1309,7 @@ fastd_ifioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
 		break;
 	case SIOCSIFADDR:
 		fastd_ifinit(ifp);
-		DEBUG(ifp, "address set\n");
+		IFP_DEBUG(ifp, "address set");
 		/*
 		 * Everything else is done at a higher level.
 		 */
