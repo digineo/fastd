@@ -56,6 +56,8 @@ func NewKernelServer(addresses []Sockaddr) (ServerImpl, error) {
 			srv.Close()
 			return nil, fmt.Errorf("bind() failed:", err)
 		}
+
+		log.Printf("listening on %s, Port %d", address.IP.String(), address.Port)
 		srv.addresses = append(srv.addresses, address)
 	}
 
