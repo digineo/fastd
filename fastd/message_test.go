@@ -24,7 +24,7 @@ func TestParseRequest(t *testing.T) {
 
 	assert.Equal("127.0.0.1", msg.Src.IP.String())
 	assert.Equal(8755, int(msg.Src.Port))
-	assert.Equal(7, len(msg.Records))
+	assert.Equal(int(RECORD_MAX), len(msg.Records))
 
 	// Handshake type
 	assert.Equal([]byte{1}, msg.Records[RECORD_HANDSHAKE_TYPE])
