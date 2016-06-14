@@ -9,7 +9,7 @@
 #include <netinet6/in6_var.h>
 
 int set_fd(sa_family_t);
-int if_clone(char*);
+int if_clone(char*, void*);
 int if_destroy(char*);
 int remove_addr4(char*);
 int remove_addr6(char*, struct sockaddr_in6*);

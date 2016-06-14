@@ -17,8 +17,8 @@ func SetDrvSpec(ifname string, cmd C.ulong, data unsafe.Pointer, len uintptr) er
 	return errors.New("not implemented")
 }
 
-func Clone(name string) string {
-	return "fastd0"
+func Clone(name string, data unsafe.Pointer) (string, error) {
+	return "", errors.New("not implemented")
 }
 
 func Destroy(name string) {

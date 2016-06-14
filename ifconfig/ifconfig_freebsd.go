@@ -45,19 +45,19 @@ func SetDrvSpec(ifname string, cmd C.ulong, data unsafe.Pointer, len uintptr) er
 	}
 }
 
-func Clone(name string) string {
+func Clone(name string, data unsafe.Pointer) (string, error) {
 	var ifname [C.IFNAMSIZ]C.char
 
 	for i, c := range name {
 		ifname[i] = C.char(c)
 	}
 
-	err := C.if_clone(&ifname[0])
+	err := C.if_clone(&ifname[0], data)
 
 	if err != 0 {
-		return ""
+		return "", syscall.Errno(err)
 	} else {
-		return C.GoString(&ifname[0])
+		return C.GoString(&ifname[0]), nil
 	}
 }
 

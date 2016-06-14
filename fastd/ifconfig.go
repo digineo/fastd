@@ -47,6 +47,12 @@ func GetRemote(ifname string) (remote *Sockaddr, pubkey []byte, err error) {
 	return
 }
 
+func Clone(remote *Sockaddr, pubkey []byte) (string, error) {
+	param := &ifconfigParam{remote: remote.RawFixed()}
+	copy(param.pubkey[:], pubkey)
+	return ifconfig.Clone("fastd", unsafe.Pointer(param))
+}
+
 // Set remote address and pubkey
 func SetRemote(ifname string, remote *Sockaddr, pubkey []byte) error {
 	param := &ifconfigParam{

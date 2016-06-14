@@ -50,7 +50,7 @@ mask128(struct sockaddr_in6 *sa, uint8_t len){
 }
 
 int
-if_clone(char* ifname)
+if_clone(char* ifname, void* data)
 {
 	int result;
 	struct ifreq ifr;
@@ -58,7 +58,13 @@ if_clone(char* ifname)
 	bzero(&ifr, sizeof(ifr));
 	strncpy(ifr.ifr_name, ifname, sizeof(ifr.ifr_name));
 
-	result = ioctl(ioctl_fd4, SIOCIFCREATE, &ifr);
+	if (data) {
+		ifr.ifr_data = data;
+		result = ioctl(ioctl_fd4, SIOCIFCREATE2, &ifr);
+	} else {
+		result = ioctl(ioctl_fd4, SIOCIFCREATE, &ifr);
+	}
+
 	strncpy(ifname, ifr.ifr_name, sizeof(ifr.ifr_name));
 
 	return result;

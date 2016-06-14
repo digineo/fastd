@@ -193,9 +193,9 @@ static void	fastd_encap_header(struct fastd_softc *, struct mbuf *, int, uint16_
 static int	fastd_encap4(struct fastd_softc *, const union fastd_sockaddr *, struct mbuf *);
 static int	fastd_encap6(struct fastd_softc *, const union fastd_sockaddr *, struct mbuf *);
 
-static void fastd_add_peer(struct fastd_softc *);
-static void fastd_remove_peer(struct fastd_softc *);
-static struct fastd_softc* fastd_lookup_peer(const union fastd_sockaddr *);
+static int	fastd_add_peer(struct fastd_softc *, union fastd_sockaddr *, char [FASTD_PUBKEY_SIZE]);
+static void	fastd_remove_peer(struct fastd_softc *);
+static struct	fastd_softc* fastd_lookup_peer(const union fastd_sockaddr *);
 
 static void fastd_sockaddr_copy(union fastd_sockaddr *, const union fastd_sockaddr *);
 static int  fastd_sockaddr_equal(const union fastd_sockaddr *, const union fastd_sockaddr *);
@@ -1010,22 +1010,28 @@ static int
 fastd_clone_create(struct if_clone *ifc, int unit, caddr_t params)
 {
 	struct fastd_softc *sc;
+	struct iffastdcfg cfg;
 	struct ifnet *ifp;
-	int error;
+	union fastd_sockaddr sa;
+	int error = 0;
+
+
+	if (params != 0) {
+		error = copyin(params, &cfg, sizeof(cfg));
+		if (error)
+			return error;
+	}
 
 	sc = malloc(sizeof(*sc), M_FASTD, M_WAITOK | M_ZERO);
 
-	if (params != NULL) {
-		// TODO
-	}
-
 	ifp = if_alloc(IFT_PPP);
 	if (ifp == NULL) {
-		error = ENOSPC;
-		goto fail;
+		free(sc, M_FASTD);
+		return ENOSPC;
 	}
 
 	mtx_init(&sc->mtx, "fastd_mtx", NULL, MTX_DEF);
+	rm_wlock(&fastd_lock);
 
 	sc->ifp = ifp;
 
@@ -1039,17 +1045,25 @@ fastd_clone_create(struct if_clone *ifc, int unit, caddr_t params)
 	ifp->if_capabilities |= IFCAP_LINKSTATE;
 	ifp->if_capenable |= IFCAP_LINKSTATE;
 
+	IFP_DEBUG(ifp, "attach");
 	if_attach(ifp);
 	bpfattach(ifp, DLT_NULL, sizeof(u_int32_t));
 
-	rm_wlock(&fastd_lock);
 	LIST_INSERT_HEAD(&fastd_ifaces_head, sc, fastd_ifaces);
+
+	if (params != 0) {
+		IFP_DEBUG(ifp, "params found");
+		inet_to_sock(&sa, &cfg.remote);
+		error = fastd_add_peer(sc, &sa, cfg.pubkey);
+		if (error){
+			fastd_destroy(sc);
+			goto unlock;
+		}
+	}
+
+unlock:
 	rm_wunlock(&fastd_lock);
 
-	return (0);
-
-fail:
-	free(sc, M_FASTD);
 	return (error);
 }
 
@@ -1057,6 +1071,8 @@ fail:
 static void
 fastd_clone_destroy(struct ifnet *ifp)
 {
+	IFP_DEBUG(ifp, "called");
+
 	struct fastd_softc *sc;
 	sc = ifp->if_softc;
 
@@ -1071,8 +1087,9 @@ fastd_clone_destroy(struct ifnet *ifp)
 static void
 fastd_destroy(struct fastd_softc *sc)
 {
-	LIST_REMOVE(sc, fastd_ifaces);
+	IFP_DEBUG(sc->ifp, "called");
 
+	LIST_REMOVE(sc, fastd_ifaces);
 	bpfdetach(sc->ifp);
 	if_detach(sc->ifp);
 	if_free(sc->ifp);
@@ -1110,18 +1127,47 @@ fastd_lookup_peer(const union fastd_sockaddr *addr)
 	return NULL;
 }
 
-static void
-fastd_add_peer(struct fastd_softc *sc)
+static int
+fastd_add_peer(struct fastd_softc *sc, union fastd_sockaddr *sa, char pubkey[FASTD_PUBKEY_SIZE])
 {
-	if (sc->remote.in4.sin_port > 0){
-		// Add to flows
-		LIST_INSERT_HEAD(&fastd_peers[FASTD_HASH(sc)], sc, fastd_flow_entry);
+	struct fastd_socket *socket;
+
+	if (sa->in4.sin_port == 0 || fastd_sockaddr_unspecified(sa))
+		return EINVAL;
+
+	// Find socket
+	socket = fastd_find_socket_locked(sa);
+	if (!socket) {
+		IFP_DEBUG(sc->ifp, "unable to find socket");
+		return EADDRNOTAVAIL;
 	}
 
-	if(sc->socket != NULL){
-		// Assign to new socket
-		LIST_INSERT_HEAD(&sc->socket->softc_head, sc, fastd_socket_entry);
+	if (fastd_lookup_peer(sa)){
+		IFP_DEBUG(sc->ifp, "address taken");
+		return EBUSY;
 	}
+
+	// Set remote address
+	fastd_sockaddr_copy(&sc->remote, sa);
+
+	// Set public key
+	if (pubkey){
+		IFP_DEBUG(sc->ifp, "setting pubkey");
+		memcpy(&sc->pubkey, pubkey, sizeof(sc->pubkey));
+	}
+
+	// Add to flows
+	LIST_INSERT_HEAD(&fastd_peers[FASTD_HASH(sc)], sc, fastd_flow_entry);
+
+	// Assign to new socket
+	sc->socket = socket;
+	LIST_INSERT_HEAD(&sc->socket->softc_head, sc, fastd_socket_entry);
+
+	// Ready to deliver packets
+	sc->ifp->if_drv_flags |= IFF_DRV_RUNNING;
+	if_link_state_change(sc->ifp, LINK_STATE_UP);
+
+	return 0;
 }
 
 
@@ -1193,7 +1239,6 @@ fastd_ctrl_set_remote(struct fastd_softc *sc, void *arg)
 {
 	struct iffastdcfg *cfg = arg;
 	struct fastd_softc *other;
-	struct fastd_socket *socket;
 	union fastd_sockaddr sa;
 	int error = 0;
 	inet_to_sock(&sa, &cfg->remote);
@@ -1203,35 +1248,18 @@ fastd_ctrl_set_remote(struct fastd_softc *sc, void *arg)
 	// address and port already taken?
 	other = fastd_lookup_peer(&sa);
 	if (other != NULL) {
-		if (other != sc) {
-			IFP_DEBUG(sc->ifp, "address taken");
-			error = EADDRNOTAVAIL;
-			goto out;
-		} else if (fastd_sockaddr_equal(&other->remote, &sa)) {
+		if (fastd_sockaddr_equal(&other->remote, &sa)){
 			// peer has already the address
 			IFP_DEBUG(sc->ifp, "address already configured");
-			goto out;
+		} else {
+			error = EBUSY;
 		}
-	}
-
-	// Find socket
-	socket = fastd_find_socket_locked(&sa);
-	if (socket == NULL) {
-		error = EADDRNOTAVAIL;
-		IFP_DEBUG(sc->ifp, "unable to find socket");
 		goto out;
 	}
 
 	// Reconfigure
 	fastd_remove_peer(sc);
-	fastd_sockaddr_copy(&sc->remote, &sa);
-	memcpy(&sc->pubkey, &cfg->pubkey, sizeof(sc->pubkey));
-	sc->socket = socket;
-	fastd_add_peer(sc);
-
-	// Ready to deliver packets
-	sc->ifp->if_drv_flags |= IFF_DRV_RUNNING;
-	if_link_state_change(sc->ifp, LINK_STATE_UP);
+	error = fastd_add_peer(sc, &sa, cfg->pubkey);
 out:
 	rm_wunlock(&fastd_lock);
 	return (error);

@@ -3,7 +3,6 @@ package fastd
 import (
 	"bytes"
 	"encoding/hex"
-	"github.com/digineo/fastd/ifconfig"
 	"log"
 	"reflect"
 	"time"
@@ -85,7 +84,13 @@ func (srv *Server) handlePacket(msg *Message) (reply *Message) {
 		}
 
 		// Assign interface and addresses
-		peer.Ifname = ifconfig.Clone("fastd")
+		var err error
+		peer.Ifname, err = Clone(msg.Src, senderKey)
+		if err != nil {
+			log.Println("cloning failed:", err)
+			return nil
+		}
+
 		if f := srv.config.AssignAddresses; f != nil {
 			f(peer)
 		}
@@ -144,10 +149,6 @@ func (srv *Server) handleFinishHandshake(msg *Message, reply *Message, peer *Pee
 	// Clear handshake keys
 	peer.sharedKey = nil
 	peer.peerHandshakeKey = nil
-
-	if err := SetRemote(peer.Ifname, peer.Remote, peer.PublicKey); err != nil {
-		log.Printf("unable to set remote for %s: %s", peer.Ifname, err)
-	}
 
 	peer.SetAddresses(peer.IPv4)
 	peer.SetAddresses(peer.IPv6)
