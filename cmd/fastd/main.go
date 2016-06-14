@@ -10,6 +10,7 @@ import (
 	"syscall"
 
 	"github.com/digineo/fastd/fastd"
+	"github.com/digineo/fastd/ifconfig"
 )
 
 func main() {
@@ -87,7 +88,31 @@ func main() {
 		} else {
 			fmt.Printf("%+v", stats)
 		}
-
+	case "getmtu":
+		if mtu, err := ifconfig.GetMTU(args[0]); err != nil {
+			fmt.Println(err.Error())
+			os.Exit(1)
+		} else {
+			fmt.Println(mtu)
+		}
+	case "setmtu":
+		mtu, _ := strconv.Atoi(args[1])
+		if err := ifconfig.SetMTU(args[0], mtu); err != nil {
+			fmt.Println(err.Error())
+			os.Exit(1)
+		}
+	case "getdescr":
+		if descr, err := ifconfig.GetDescr(args[0]); err != nil {
+			fmt.Println(err.Error())
+			os.Exit(1)
+		} else {
+			fmt.Println(descr)
+		}
+	case "setdescr":
+		if err := ifconfig.SetDescr(args[0], args[1]); err != nil {
+			fmt.Println(err.Error())
+			os.Exit(1)
+		}
 	default:
 		fmt.Println("invalid command:", cmd)
 		os.Exit(1)

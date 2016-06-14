@@ -81,6 +81,59 @@ if_destroy(char* ifname)
 	return ioctl(ioctl_fd4, SIOCIFDESTROY, &ifr);
 }
 
+int get_mtu(char *ifname, int *mtu){
+	int error;
+	struct ifreq ifr;
+
+	bzero(&ifr, sizeof(ifr));
+	strlcpy(ifr.ifr_name, ifname, sizeof(ifr.ifr_name));
+
+	error = ioctl(ioctl_fd4, SIOCGIFMTU, &ifr);
+
+	if (!error)
+		*mtu = ifr.ifr_mtu;
+
+	return error;
+}
+
+int set_mtu(char *ifname, int mtu){
+	struct ifreq ifr;
+
+	bzero(&ifr, sizeof(ifr));
+	strlcpy(ifr.ifr_name, ifname, sizeof(ifr.ifr_name));
+	ifr.ifr_mtu = mtu;
+
+	return ioctl(ioctl_fd4, SIOCSIFMTU, &ifr);
+}
+
+int get_descr(char* ifname, char* descr, size_t descrlen){
+	struct ifreq ifr;
+
+	bzero(&ifr, sizeof(ifr));
+	strlcpy(ifr.ifr_name, ifname, sizeof(ifr.ifr_name));
+
+	ifr.ifr_buffer.buffer = descr;
+	ifr.ifr_buffer.length = descrlen;
+
+	return ioctl(ioctl_fd4, SIOCGIFDESCR, &ifr);
+}
+
+int set_descr(char* ifname, char* descr){
+	struct ifreq ifr;
+	bzero(&ifr, sizeof(ifr));
+	strlcpy(ifr.ifr_name, ifname, sizeof(ifr.ifr_name));
+
+	ifr.ifr_buffer.buffer = descr;
+	ifr.ifr_buffer.length = strlen(descr) + 1;
+
+	if (ifr.ifr_buffer.length == 1) {
+		ifr.ifr_buffer.buffer = NULL;
+		ifr.ifr_buffer.length = 0;
+	}
+
+	return ioctl(ioctl_fd4, SIOCSIFDESCR, &ifr);
+}
+
 int
 remove_addr4(char* ifname)
 {

@@ -61,6 +61,54 @@ func Clone(name string, data unsafe.Pointer) (string, error) {
 	}
 }
 
+func GetMTU(ifname string) (int, error) {
+	c_ifname := C.CString(ifname)
+	defer C.free(unsafe.Pointer(c_ifname))
+
+	var mtu C.int
+	if err := C.get_mtu(c_ifname, &mtu); err != 0 {
+		return 0, syscall.Errno(err)
+	} else {
+		return int(mtu), nil
+	}
+}
+
+func SetMTU(ifname string, mtu int) error {
+	c_ifname := C.CString(ifname)
+	defer C.free(unsafe.Pointer(c_ifname))
+
+	if err := C.set_mtu(c_ifname, C.int(mtu)); err != 0 {
+		return syscall.Errno(err)
+	} else {
+		return nil
+	}
+}
+
+func GetDescr(ifname string) (string, error) {
+	var c_descr [64]C.char
+	c_ifname := C.CString(ifname)
+	defer C.free(unsafe.Pointer(c_ifname))
+
+	if err := C.get_descr(c_ifname, &c_descr[0], C.size_t(len(c_descr))); err != 0 {
+		return "", syscall.Errno(err)
+	} else {
+		return C.GoString(&c_descr[0]), nil
+	}
+}
+
+func SetDescr(ifname string, descr string) error {
+	c_ifname := C.CString(ifname)
+	c_descr := C.CString(descr)
+	defer C.free(unsafe.Pointer(c_ifname))
+	defer C.free(unsafe.Pointer(c_descr))
+
+	if err := C.set_descr(c_ifname, c_descr); err != 0 {
+		return syscall.Errno(err)
+	} else {
+		return nil
+	}
+}
+
 func Destroy(name string) error {
 	var ifname [C.IFNAMSIZ]C.char
 

@@ -7,28 +7,44 @@ import (
 	"unsafe"
 )
 
-// not implemented
+var notImplemented = errors.New("not implemented")
 
 func GetDrvSpec(ifname string, cmd C.ulong, data unsafe.Pointer, len uintptr) error {
-	return errors.New("not implemented")
+	return notImplemented
 }
 
 func SetDrvSpec(ifname string, cmd C.ulong, data unsafe.Pointer, len uintptr) error {
-	return errors.New("not implemented")
+	return notImplemented
 }
 
 func Clone(name string, data unsafe.Pointer) (string, error) {
-	return "", errors.New("not implemented")
+	return "", notImplemented
 }
 
 func Destroy(name string) {
 	// TODO
 }
 
+func GetMTU(ifname string) (int, error) {
+	return 0, notImplemented
+}
+
+func SetMTU(ifname string, mtu int) error {
+	return notImplemented
+}
+
+func GetDescr(ifname string) (string, error) {
+	return "", notImplemented
+}
+
+func SetDescr(ifname string, descr string) error {
+	return notImplemented
+}
+
 func SetAddrPTP(ifname string, addr, dstaddr *syscall.RawSockaddrAny) (err error) {
-	return errors.New("not implemented")
+	return notImplemented
 }
 
 func SetAddr(ifname string, addr *syscall.RawSockaddrAny, prefixlen uint8) (err error) {
-	return errors.New("not implemented")
+	return notImplemented
 }

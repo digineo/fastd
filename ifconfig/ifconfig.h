@@ -11,6 +11,10 @@
 int set_fd(sa_family_t);
 int if_clone(char*, void*);
 int if_destroy(char*);
+int get_descr(char*, char*, size_t);
+int set_descr(char*, char*);
+int get_mtu(char*, int*);
+int set_mtu(char*, int);
 int remove_addr4(char*);
 int remove_addr6(char*, struct sockaddr_in6*);
 int add_addr4_ptp(char*, struct sockaddr_in*, struct sockaddr_in*);
