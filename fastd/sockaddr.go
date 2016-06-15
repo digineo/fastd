@@ -12,6 +12,12 @@ type Sockaddr struct {
 	Port uint16
 }
 
+// Converts a net.IP to a sockaddr_in
+func IPaddrToNative(addr net.IP) *syscall.RawSockaddrAny {
+	sa := Sockaddr{IP: addr}
+	return sa.Native()
+}
+
 func uint16toh(i uint16) uint16 {
 	return (i << 8) | (i >> 8)
 }
