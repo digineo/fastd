@@ -1,3 +1,14 @@
+# fastd
+
+
+## Features
+
+* High performance
+* TUN support (Layer 3)
+* Dual-Stack (IPv4 + IPv6)
+* FHMQV (Fully Hashed Menezes-Qu-Vanstone) key exchange
+* Null Cipher (no encryption)
+
 
 ## Installation
 
