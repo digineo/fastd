@@ -1288,7 +1288,7 @@ fastd_ioctl_drvspec(fastd_softc_t *sc, struct ifdrv *ifd, int get)
 
 
 	if (ifd->ifd_cmd >= fastd_control_table_size){
-		printf("fastd_ioctl_drvspec() invalid command: %lu\n", ifd->ifd_cmd);
+		IFP_DEBUG(sc->ifp, "invalid command: %lu", ifd->ifd_cmd);
 		return (EINVAL);
 	}
 
@@ -1297,19 +1297,19 @@ fastd_ioctl_drvspec(fastd_softc_t *sc, struct ifdrv *ifd, int get)
 	out = (vc->fastdc_flags & FASTD_CTRL_FLAG_COPYOUT) != 0;
 
 	if ((get != 0 && out == 0) || (get == 0 && out != 0)){
-		printf("fastd_ioctl_drvspec() invalid flags\n");
+		IFP_DEBUG(sc->ifp, "invalid flags");
 		return (EINVAL);
 	}
 
 	if (ifd->ifd_len != vc->fastdc_argsize || ifd->ifd_len > sizeof(args)){
-		printf("fastd_ioctl_drvspec() invalid argsize given=%lu expected=%d, args=%lu\n", ifd->ifd_len, vc->fastdc_argsize, sizeof(args));
+		IFP_DEBUG(sc->ifp, "invalid argsize given=%lu expected=%d, args=%lu", ifd->ifd_len, vc->fastdc_argsize, sizeof(args));
 		return (EINVAL);
 	}
 
 	if (vc->fastdc_flags & FASTD_CTRL_FLAG_COPYIN) {
 		error = copyin(ifd->ifd_data, &args, ifd->ifd_len);
 		if (error){
-			printf("fastd_ioctl_drvspec() copyin failed\n");
+			IFP_DEBUG(sc->ifp, "copyin failed");
 			return (error);
 		}
 	}
