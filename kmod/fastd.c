@@ -400,7 +400,7 @@ fastd_read(struct cdev *dev, struct uio *uio, int ioflag)
 		free(msg, M_FASTD);
 	}
 
-	if (error != 0)
+	if (error)
 		uprintf("Read failed.\n");
 
 	return (error);
@@ -893,7 +893,7 @@ fastd_send_packet(struct uio *uio) {
 
 	// Copy addresses from user memory
 	error = uiomove((char *)&msg + sizeof(uint16_t), addrlen, uio);
-	if (error != 0){
+	if (error){
 		goto out;
 	}
 
@@ -916,15 +916,13 @@ fastd_send_packet(struct uio *uio) {
 
 	// Copy payload from user memory
 	error = uiomove(m->m_data, datalen, uio);
-	if (error != 0){
+	if (error){
 		goto fail;
 	}
 
 	// Send packet
-	printf("fastd_send_packet: sosend()\n");
 	error = sosend(sock->socket, &dst_addr.sa, NULL, m, NULL, 0, uio->uio_td);
-	printf("fastd_send_packet: sosend() result: %d\n", error);
-	if (error != 0){
+	if (error){
 		goto fail;
 	}
 
