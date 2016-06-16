@@ -2,6 +2,7 @@ package fastd
 
 import (
 	"encoding/binary"
+	"github.com/digineo/fastd/ifconfig"
 	"net"
 	"strconv"
 	"syscall"
@@ -10,12 +11,6 @@ import (
 type Sockaddr struct {
 	IP   net.IP
 	Port uint16
-}
-
-// Converts a net.IP to a sockaddr_in
-func IPaddrToNative(addr net.IP) *syscall.RawSockaddrAny {
-	sa := Sockaddr{IP: addr}
-	return sa.Native()
 }
 
 func uint16toh(i uint16) uint16 {
@@ -81,7 +76,7 @@ func (addr *Sockaddr) Equal(other *Sockaddr) bool {
 
 // Returns the address family
 func (addr *Sockaddr) Family() int {
-	if isIPv4(addr.IP) {
+	if ifconfig.IsIPv4(addr.IP) {
 		return syscall.AF_INET
 	} else {
 		return syscall.AF_INET6
@@ -90,17 +85,4 @@ func (addr *Sockaddr) Family() int {
 
 func (addr *Sockaddr) String() string {
 	return net.JoinHostPort(addr.IP.String(), strconv.Itoa(int(addr.Port)))
-}
-
-func isIPv4(ip net.IP) bool {
-	return len(ip) == net.IPv4len || (len(ip) > 11 && isZeros(ip[0:10]) && ip[10] == 0xff && ip[11] == 0xff)
-}
-
-func isZeros(ip net.IP) bool {
-	for _, b := range ip {
-		if b != 0 {
-			return false
-		}
-	}
-	return true
 }

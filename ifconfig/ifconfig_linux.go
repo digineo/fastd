@@ -3,7 +3,7 @@ package ifconfig
 import (
 	"C"
 	"errors"
-	"syscall"
+	"net"
 	"unsafe"
 )
 
@@ -41,10 +41,10 @@ func SetDescr(ifname string, descr string) error {
 	return notImplemented
 }
 
-func SetAddrPTP(ifname string, addr, dstaddr *syscall.RawSockaddrAny) (err error) {
+func SetAddrPTP(ifname string, addr, dstaddr net.IP) (err error) {
 	return notImplemented
 }
 
-func SetAddr(ifname string, addr *syscall.RawSockaddrAny, prefixlen uint8) (err error) {
+func SetAddr(ifname string, addr net.IP, prefixlen uint8) (err error) {
 	return notImplemented
 }

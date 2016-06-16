@@ -22,7 +22,7 @@ type ifconfigParam struct {
 }
 
 func SetAddrPTP(ifname string, addr, dstaddr net.IP) (err error) {
-	return ifconfig.SetAddrPTP(ifname, IPaddrToNative(addr), IPaddrToNative(dstaddr))
+	return ifconfig.SetAddrPTP(ifname, addr, dstaddr)
 }
 
 const (
