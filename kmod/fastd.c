@@ -45,8 +45,10 @@
 #include "fastd.h"
 
 #ifdef DEBUG
+#define DEBUGF(fmt, ...) printf("%s(): " fmt "\n", __func__, ##__VA_ARGS__);
 #define IFP_DEBUG(ifp, fmt, ...) if_printf(ifp, "%s(): " fmt "\n", __func__, ##__VA_ARGS__);
 #else
+#define DEBUGF(...)
 #define IFP_DEBUG(...)
 #endif
 
@@ -800,7 +802,7 @@ fastd_rcv_udp_packet(struct mbuf *m, int offset, struct inpcb *inpcb,
 		fastd_recv_data(m, offset, datalen, (const fastd_sockaddr_t *)sa_src, fso);
 		goto unlock;
 	default:
-		printf("fastd: invalid packet type=%02X datalen=%d\n", msg_type, datalen);
+		DEBUGF("invalid packet type=%02X datalen=%d", msg_type, datalen);
 	}
 free:
 	m_freem(m);
@@ -817,7 +819,7 @@ fastd_recv_data(struct mbuf *m, u_int offset, u_int datalen, const fastd_sockadd
 	sc = fastd_lookup_peer(sa_src);
 	if (sc == NULL) {
 		m_freem(m);
-		printf("fastd: unable to find peer\n");
+		DEBUGF("unable to find peer");
 		return;
 	}
 
