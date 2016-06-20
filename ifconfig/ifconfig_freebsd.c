@@ -81,7 +81,8 @@ if_destroy(char* ifname)
 	return ioctl(ioctl_fd4, SIOCIFDESTROY, &ifr);
 }
 
-int get_mtu(char *ifname, int *mtu){
+int
+get_mtu(char *ifname, int *mtu){
 	int error;
 	struct ifreq ifr;
 
@@ -96,7 +97,8 @@ int get_mtu(char *ifname, int *mtu){
 	return error;
 }
 
-int set_mtu(char *ifname, int mtu){
+int
+set_mtu(char *ifname, int mtu){
 	struct ifreq ifr;
 
 	bzero(&ifr, sizeof(ifr));
@@ -106,7 +108,8 @@ int set_mtu(char *ifname, int mtu){
 	return ioctl(ioctl_fd4, SIOCSIFMTU, &ifr);
 }
 
-int get_descr(char* ifname, char* descr, size_t descrlen){
+int
+get_descr(char* ifname, char* descr, size_t descrlen){
 	struct ifreq ifr;
 
 	bzero(&ifr, sizeof(ifr));
@@ -118,7 +121,8 @@ int get_descr(char* ifname, char* descr, size_t descrlen){
 	return ioctl(ioctl_fd4, SIOCGIFDESCR, &ifr);
 }
 
-int set_descr(char* ifname, char* descr){
+int
+set_descr(char* ifname, char* descr){
 	struct ifreq ifr;
 	bzero(&ifr, sizeof(ifr));
 	strlcpy(ifr.ifr_name, ifname, sizeof(ifr.ifr_name));
@@ -203,7 +207,8 @@ add_addr6(char* ifname, struct sockaddr_in6 *addr, uint8_t prefixlen)
 	return ioctl(ioctl_fd6, SIOCAIFADDR_IN6, &req);
 }
 
-int get_drv_spec(char* ifname, unsigned long cmd, void *data, size_t len)
+int
+get_drv_spec(char* ifname, unsigned long cmd, void *data, size_t len)
 {
 	struct ifdrv ifd;
 	bzero(&ifd, sizeof(ifd));
@@ -216,7 +221,8 @@ int get_drv_spec(char* ifname, unsigned long cmd, void *data, size_t len)
 	return ioctl(ioctl_fd4, SIOCGDRVSPEC, &ifd);
 }
 
-int set_drv_spec(char* ifname, unsigned long cmd, void *data, size_t len)
+int
+set_drv_spec(char* ifname, unsigned long cmd, void *data, size_t len)
 {
 	struct ifdrv ifd;
 	bzero(&ifd, sizeof(ifd));
