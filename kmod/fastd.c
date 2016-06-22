@@ -942,10 +942,8 @@ fastd_output(struct ifnet *ifp, struct mbuf *m, const struct sockaddr *dst, stru
 	fastd_sockaddr_t remote;
 	fastd_softc_t *sc;
 	u_int32_t af;
-	int len;
 
 	sc = ifp->if_softc;
-	len = m->m_pkthdr.len;
 
 	rm_rlock(&fastd_lock, &tracker);
 	if ((ifp->if_drv_flags & IFF_DRV_RUNNING) == 0) {
