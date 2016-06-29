@@ -1015,27 +1015,39 @@ fastd_clone_create(struct if_clone *ifc, int unit, caddr_t params)
 	fastd_sockaddr_t sa;
 	int error = 0;
 
-
-	if (params != 0) {
-		error = copyin(params, &cfg, sizeof(cfg));
-		if (error)
-			return error;
-	}
-
+	// allocs
+	ifp = if_alloc(IFT_PPP);
+	if (!ifp)
+		return ENOSPC;
 	sc = malloc(sizeof(*sc), M_FASTD, M_WAITOK | M_ZERO);
 
-	ifp = if_alloc(IFT_PPP);
-	if (ifp == NULL) {
-		free(sc, M_FASTD);
-		return ENOSPC;
-	}
-
+	// inits
+	sc->ifp = ifp;
+	if_initname(ifp, fastdname, unit);
 	mtx_init(&sc->mtx, "fastd_mtx", NULL, MTX_DEF);
 	rm_wlock(&fastd_lock);
 
-	sc->ifp = ifp;
+	// params
+	if (params) {
+		IFP_DEBUG(ifp, "params found");
 
-	if_initname(ifp, fastdname, unit);
+		error = copyin(params, &cfg, sizeof(cfg));
+		if (error)
+			goto fail;
+
+		inet_to_sock(&sa, &cfg.remote);
+
+		if (fastd_lookup_peer(&sa)){
+			IFP_DEBUG(sc->ifp, "address taken");
+			error = EBUSY;
+			goto fail;
+		}
+
+		error = fastd_add_peer(sc, &sa, cfg.pubkey);
+		if (error)
+			goto fail;
+	}
+
 	ifp->if_softc = sc;
 	ifp->if_ioctl = fastd_ifioctl;
 	ifp->if_output = fastd_output;
@@ -1051,15 +1063,12 @@ fastd_clone_create(struct if_clone *ifc, int unit, caddr_t params)
 
 	LIST_INSERT_HEAD(&fastd_ifaces_head, sc, fastd_ifaces);
 
-	if (params != 0) {
-		IFP_DEBUG(ifp, "params found");
-		inet_to_sock(&sa, &cfg.remote);
-		error = fastd_add_peer(sc, &sa, cfg.pubkey);
-		if (error){
-			fastd_destroy(sc);
-			goto unlock;
-		}
-	}
+	goto unlock;
+
+fail:
+	mtx_destroy(&sc->mtx);
+	if_free(sc->ifp);
+	free(sc, M_FASTD);
 
 unlock:
 	rm_wunlock(&fastd_lock);
@@ -1140,11 +1149,6 @@ fastd_add_peer(fastd_softc_t *sc, fastd_sockaddr_t *sa, char pubkey[FASTD_PUBKEY
 	if (!socket) {
 		IFP_DEBUG(sc->ifp, "unable to find socket");
 		return EADDRNOTAVAIL;
-	}
-
-	if (fastd_lookup_peer(sa)){
-		IFP_DEBUG(sc->ifp, "address taken");
-		return EBUSY;
 	}
 
 	// Set remote address
