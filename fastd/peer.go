@@ -38,6 +38,21 @@ func NewPeer(addr Sockaddr) *Peer {
 	}
 }
 
+// Returns all peers
+func (srv *Server) GetPeers() []*Peer {
+	srv.peersMtx.Lock()
+	defer srv.peersMtx.Unlock()
+
+	i := 0
+	peers := make([]*Peer, len(srv.peers))
+	for _, peer := range srv.peers {
+		peers[i] = peer
+		i += 1
+	}
+
+	return peers
+}
+
 // Returns the peer and creates it if it does not exist yet
 func (srv *Server) GetPeer(addr Sockaddr) (peer *Peer) {
 	key := string(addr.Raw())
