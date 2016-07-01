@@ -61,7 +61,12 @@ func NewKernelServer(addresses []Sockaddr) (ServerImpl, error) {
 		srv.addresses = append(srv.addresses, address)
 	}
 
-	go srv.readPackets()
+	go func() {
+		err := srv.readPackets()
+		if err != nil {
+			log.Println("readPackets failed:", err)
+		}
+	}()
 
 	return srv, nil
 }
