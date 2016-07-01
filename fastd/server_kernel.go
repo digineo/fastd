@@ -97,7 +97,7 @@ func (srv *KernelServer) Peers() (peers []*Peer) {
 					Remote:    remote,
 					PublicKey: pubkey,
 				})
-				log.Printf("loaded existing session: iface=%s remote=%s pubkey=%x", iface.Name, remote, pubkey)
+				log.Printf("loaded existing session: iface=%s remote=%v pubkey=%x", iface.Name, remote, pubkey)
 			} else {
 				log.Println("failed to load session: iface=%s", iface.Name)
 			}
