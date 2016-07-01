@@ -32,7 +32,7 @@ const (
 )
 
 // Get remote address and pubkey
-func GetRemote(ifname string) (remote *Sockaddr, pubkey []byte, err error) {
+func GetRemote(ifname string) (remote Sockaddr, pubkey []byte, err error) {
 	param := &ifconfigParam{}
 
 	ifconfig.GetDrvSpec(ifname, FASTD_PARAM_GET_REMOTE, unsafe.Pointer(param), unsafe.Sizeof(*param))
@@ -45,14 +45,14 @@ func GetRemote(ifname string) (remote *Sockaddr, pubkey []byte, err error) {
 	return
 }
 
-func Clone(remote *Sockaddr, pubkey []byte) (string, error) {
+func Clone(remote Sockaddr, pubkey []byte) (string, error) {
 	param := &ifconfigParam{remote: remote.RawFixed()}
 	copy(param.pubkey[:], pubkey)
 	return ifconfig.Clone("fastd", unsafe.Pointer(param))
 }
 
 // Set remote address and pubkey
-func SetRemote(ifname string, remote *Sockaddr, pubkey []byte) error {
+func SetRemote(ifname string, remote Sockaddr, pubkey []byte) error {
 	param := &ifconfigParam{
 		remote: remote.RawFixed(),
 	}

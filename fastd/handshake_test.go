@@ -15,7 +15,7 @@ func TestHandshake(t *testing.T) {
 	srv.peers = make(map[string]*Peer)
 
 	peer := &Peer{
-		Remote:          &peerAddr,
+		Remote:          peerAddr,
 		ourHandshakeKey: testHandshakeKey,
 	}
 	srv.addPeer(peer)

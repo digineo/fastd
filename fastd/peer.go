@@ -12,7 +12,7 @@ type AddressConfig struct {
 }
 
 type Peer struct {
-	Remote           *Sockaddr
+	Remote           Sockaddr
 	PublicKey        []byte
 	sharedKey        []byte
 	peerHandshakeKey []byte   // public handshake key from Alice
@@ -30,7 +30,7 @@ type Peer struct {
 	Data interface{} // Some data that can be attached to the peer
 }
 
-func NewPeer(addr *Sockaddr) *Peer {
+func NewPeer(addr Sockaddr) *Peer {
 	return &Peer{
 		Remote:          addr,
 		ourHandshakeKey: RandomKeypair(),
@@ -39,7 +39,7 @@ func NewPeer(addr *Sockaddr) *Peer {
 }
 
 // Returns the peer and creates it if it does not exist yet
-func (srv *Server) GetPeer(addr *Sockaddr) (peer *Peer) {
+func (srv *Server) GetPeer(addr Sockaddr) (peer *Peer) {
 	key := string(addr.Raw())
 
 	srv.peersMtx.Lock()

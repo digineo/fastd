@@ -50,8 +50,8 @@ const (
 type Records [RECORD_MAX][]byte
 
 type Message struct {
-	Src     *Sockaddr
-	Dst     *Sockaddr
+	Src     Sockaddr
+	Dst     Sockaddr
 	Type    byte
 	Records Records
 	SignKey []byte

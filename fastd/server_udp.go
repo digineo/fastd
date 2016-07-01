@@ -72,13 +72,13 @@ func (srv *UDPServer) readPackets(udpconn *UDPConn) {
 		}
 		data := make([]byte, n)
 		copy(data, buf[:n])
-		srv.read(data, &udpconn.addr, src)
+		srv.read(data, udpconn.addr, src)
 	}
 
 	srv.wg.Done()
 }
 
-func (srv *UDPServer) read(buf []byte, dst *Sockaddr, src *net.UDPAddr) error {
+func (srv *UDPServer) read(buf []byte, dst Sockaddr, src *net.UDPAddr) error {
 	// check size
 	if len(buf) < 4 {
 		return fmt.Errorf("packet too small (%d bytes)", len(buf))
@@ -88,7 +88,7 @@ func (srv *UDPServer) read(buf []byte, dst *Sockaddr, src *net.UDPAddr) error {
 		return err
 	} else {
 		msg.Dst = dst
-		msg.Src = &Sockaddr{
+		msg.Src = Sockaddr{
 			IP:   src.IP,
 			Port: uint16(src.Port),
 		}
@@ -98,7 +98,7 @@ func (srv *UDPServer) read(buf []byte, dst *Sockaddr, src *net.UDPAddr) error {
 }
 
 // Find the corresponding
-func (srv *UDPServer) findConn(addr *Sockaddr) *net.UDPConn {
+func (srv *UDPServer) findConn(addr Sockaddr) *net.UDPConn {
 	for _, udpconn := range srv.connections {
 		if udpconn.addr.Family() == addr.Family() {
 			return udpconn.conn
