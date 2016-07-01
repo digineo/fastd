@@ -132,7 +132,8 @@ func (srv *KernelServer) readPackets() error {
 		case io.EOF:
 			num, _, errno := syscall.Syscall(syscall.SYS_POLL, uintptr(unsafe.Pointer(&pollFd)), uintptr(1), 60*1000)
 
-			if errno != 0 {
+			// Error and not interrupted system call ?
+			if errno != 0 && errno != syscall.EINTR {
 				return fmt.Errorf("syscall.SYS_POLL failed: %d", errno)
 			}
 
