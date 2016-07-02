@@ -21,6 +21,10 @@
     make
     sudo kldload ./fastd.ko
 
+To create a debug build:
+
+    make DEBUG_FLAGS=-DDEBUG
+
 ### Daemon
 
     pkg install go pkgconf libuecc
