@@ -73,6 +73,11 @@
 #define FASTD_CMD_SET_REMOTE	1
 #define FASTD_CMD_GET_STATS	2
 
+
+#define FASTD_RLOCK(_sc, _p)	rm_rlock(&(_sc)->lock, (_p))
+#define FASTD_RUNLOCK(_sc, _p)	rm_runlock(&(_sc)->lock, (_p))
+#define FASTD_WLOCK(_sc)	rm_wlock(&(_sc)->lock)
+#define FASTD_WUNLOCK(_sc)	rm_wunlock(&(_sc)->lock)
 #define FASTD_ACQUIRE(_sc)	refcount_acquire(&(_sc)->refcnt)
 #define FASTD_RELEASE(_sc)	refcount_release(&(_sc)->refcnt)
 
@@ -162,8 +167,11 @@ struct fastd_softc {
 	struct ifnet		*ifp;		/* the interface */
 	fastd_socket_t		*socket;	/* socket for outgoing packets */
 	fastd_sockaddr_t	remote;		/* remote ip address and port */
+	struct rmlock		lock;		/* to wait for the refcounter */
 	volatile u_int		refcnt;		/* reference counter */
 	char			pubkey[FASTD_PUBKEY_SIZE]; /* public key of the peer */
+	uint32_t		flags;
+#define FASTD_FLAG_TEARDOWN	0x0001
 };
 typedef struct fastd_softc fastd_softc_t;
 
@@ -188,6 +196,7 @@ static void	fastd_recv_data(struct mbuf *, u_int, u_int, fastd_softc_t *);
 
 static int	fastd_clone_create(struct if_clone *, int, caddr_t);
 static void	fastd_clone_destroy(struct ifnet *);
+static void	fastd_teardown(fastd_softc_t *sc);
 static void	fastd_destroy(fastd_softc_t *sc);
 static int	fastd_ifioctl(struct ifnet *, u_long, caddr_t);
 static int	fastd_ioctl_drvspec(fastd_softc_t *, struct ifdrv *, int);
@@ -828,11 +837,15 @@ fastd_rcv_udp_packet(struct mbuf *m, int offset, struct inpcb *inpcb,
 			DEBUGF("unable to find peer");
 			goto out;
 		}
+		if ((sc->ifp->if_drv_flags & IFF_DRV_RUNNING) == 0){
+			IFP_DEBUG(sc->ifp, "not running");
+			goto out;
+		}
 
 		FASTD_ACQUIRE(sc);
 		rm_runlock(&fastd_lock, &tracker);
 		fastd_recv_data(m, offset, datalen, sc);
-		FASTD_RELEASE(sc);
+		fastd_release(sc);
 
 		// unlock/free already done
 		return;
@@ -972,11 +985,10 @@ fastd_output(struct ifnet *ifp, struct mbuf *m, const struct sockaddr *dst, stru
 
 	sc = ifp->if_softc;
 
-	rm_rlock(&fastd_lock, &tracker);
+	FASTD_RLOCK(sc, &tracker);
 	if ((ifp->if_drv_flags & IFF_DRV_RUNNING) == 0) {
-		rm_runlock(&fastd_lock, &tracker);
+		FASTD_RUNLOCK(sc, &tracker);
 		m_freem(m);
-		IFP_DEBUG(ifp, "netdown");
 		return ENETDOWN;
 	}
 
@@ -989,7 +1001,7 @@ fastd_output(struct ifnet *ifp, struct mbuf *m, const struct sockaddr *dst, stru
 	fastd_sockaddr_copy(&remote, &sc->remote);
 
 	FASTD_ACQUIRE(sc);
-	rm_runlock(&fastd_lock, &tracker);
+	FASTD_RUNLOCK(sc, &tracker);
 
 	// Pass to Berkeley Packet Filter
 	BPF_MTAP2(ifp, &af, sizeof(af), m);
@@ -1027,11 +1039,18 @@ fastd_iface_unload()
 
 	if_clone_detach(fastd_cloner);
 
+	// teardown interfaces
 	rm_wlock(&fastd_lock);
-	while ((sc = LIST_FIRST(&fastd_ifaces_head)) != NULL) {
-		fastd_destroy(sc);
+	LIST_FOREACH(sc, &fastd_ifaces_head, fastd_ifaces) {
+		fastd_teardown(sc);
 	}
 	rm_wunlock(&fastd_lock);
+
+	// destroy interfaces
+	while ((sc = LIST_FIRST(&fastd_ifaces_head)) != NULL) {
+		LIST_REMOVE(sc, fastd_ifaces);
+		fastd_destroy(sc);
+	}
 
 	for (i = 0; i < FASTD_HASH_SIZE; i++) {
 		KASSERT(LIST_EMPTY(&fastd_peers[i]), "fastd: list not empty");
@@ -1056,6 +1075,7 @@ fastd_clone_create(struct if_clone *ifc, int unit, caddr_t params)
 	// inits
 	sc->ifp = ifp;
 	if_initname(ifp, fastdname, unit);
+	rm_init(&sc->lock, "fastdrm");
 
 	rm_wlock(&fastd_lock);
 
@@ -1098,6 +1118,7 @@ fastd_clone_create(struct if_clone *ifc, int unit, caddr_t params)
 	goto unlock;
 
 fail:
+	rm_destroy(&sc->lock);
 	if_free(sc->ifp);
 	free(sc, M_FASTD);
 
@@ -1113,30 +1134,50 @@ fastd_clone_destroy(struct ifnet *ifp)
 {
 	IFP_DEBUG(ifp, "called");
 
-	fastd_softc_t *sc;
-	sc = ifp->if_softc;
+	fastd_softc_t *sc = ifp->if_softc;
 
 	rm_wlock(&fastd_lock);
-	fastd_remove_peer(sc);
-	fastd_destroy(sc);
+	fastd_teardown(sc);
+	LIST_REMOVE(sc, fastd_ifaces);
 	rm_wunlock(&fastd_lock);
+
+	fastd_destroy(sc);
 }
 
-// fastd_lock must be locked before
 static void
 fastd_destroy(fastd_softc_t *sc)
 {
 	IFP_DEBUG(sc->ifp, "called");
 
-	while (sc->refcnt != 0)
-		rm_sleep(sc, &fastd_lock, 0, "fastd_destroy", hz);
+	// teardown must have already called before
+	MPASS(sc->flags & FASTD_FLAG_TEARDOWN);
 
-	LIST_REMOVE(sc, fastd_ifaces);
+	// Wait for reference counter to become zero
+	FASTD_WLOCK(sc);
+	while (sc->refcnt != 0) {
+		rm_sleep(sc, &sc->lock, 0, "fastd_destroy", hz);
+	}
+	FASTD_WUNLOCK(sc);
+
+	IFP_DEBUG(sc->ifp, "detach");
 	bpfdetach(sc->ifp);
 	if_detach(sc->ifp);
 	if_free(sc->ifp);
+	rm_destroy(&sc->lock);
 	free(sc, M_FASTD);
 }
+
+static void
+fastd_teardown(fastd_softc_t *sc) {
+	rm_assert(&fastd_lock, RA_WLOCKED);
+
+	sc->flags |= FASTD_FLAG_TEARDOWN;
+	sc->ifp->if_flags &= ~IFF_UP;
+	sc->ifp->if_drv_flags &= ~IFF_DRV_RUNNING;
+
+	fastd_remove_peer(sc);
+}
+
 
 static void
 fastd_remove_peer(fastd_softc_t *sc)
@@ -1161,6 +1202,8 @@ static fastd_softc_t*
 fastd_lookup_peer(const fastd_sockaddr_t *addr)
 {
 	fastd_softc_t *entry;
+
+	rm_assert(&fastd_lock, RA_LOCKED);
 	LIST_FOREACH(entry, &fastd_peers[FASTD_HASH_ADDR(addr)], fastd_flow_entry) {
 		if (fastd_sockaddr_equal(&entry->remote, addr))
 			return entry;
@@ -1173,6 +1216,7 @@ static int
 fastd_add_peer(fastd_softc_t *sc, fastd_sockaddr_t *sa, char pubkey[FASTD_PUBKEY_SIZE])
 {
 	fastd_socket_t *socket;
+	rm_assert(&fastd_lock, RA_WLOCKED);
 
 	if (sa->in4.sin_port == 0 || fastd_sockaddr_unspecified(sa))
 		return EINVAL;
@@ -1214,8 +1258,9 @@ fastd_ifinit(struct ifnet *ifp)
 {
 	IFP_DEBUG(ifp, "initializing");
 
-	// no locking because no other functions modify if_flags
+	rm_wlock(&fastd_lock);
 	ifp->if_flags |= IFF_UP;
+	rm_wunlock(&fastd_lock);
 }
 
 
@@ -1278,6 +1323,10 @@ fastd_ctrl_set_remote(fastd_softc_t *sc, void *arg)
 	inet_to_sock(&sa, &cfg->remote);
 
 	rm_wlock(&fastd_lock);
+	if (sc->flags & FASTD_FLAG_TEARDOWN) {
+		error = EBUSY;
+		goto out;
+	}
 
 	// address and port already taken?
 	other = fastd_lookup_peer(&sa);
