@@ -3,11 +3,13 @@ package fastd
 import (
 	"encoding/hex"
 	"fmt"
+	"time"
 )
 
 type Config struct {
 	Bind            []Sockaddr
 	serverKeys      *KeyPair
+	Timeout         time.Duration
 	AssignAddresses func(*Peer)
 	OnVerify        func(*Peer) bool
 	OnEstablish     func(*Peer) bool

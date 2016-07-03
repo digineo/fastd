@@ -53,9 +53,6 @@ func NewServer(implName string, config *Config) (srv *Server, err error) {
 		peers:  make(map[string]*Peer),
 		impl:   instance,
 		config: *config,
-
-		timeoutTicker: time.NewTicker(peerCheckInterval),
-		timeoutStop:   make(chan struct{}),
 	}
 
 	// Load existing sessions
@@ -70,14 +67,21 @@ func NewServer(implName string, config *Config) (srv *Server, err error) {
 	}
 
 	srv.startWorker()
-	srv.startTimeouter()
+
+	if srv.config.Timeout > 0 {
+		srv.timeoutTicker = time.NewTicker(peerCheckInterval)
+		srv.timeoutStop = make(chan struct{})
+		srv.startTimeouter()
+	}
 
 	return
 }
 
 // Stops all routines
 func (srv *Server) Stop() {
-	srv.stopTimeouter()
+	if srv.timeoutTicker != nil {
+		srv.stopTimeouter()
+	}
 	srv.impl.Close()
 	srv.wg.Wait()
 }

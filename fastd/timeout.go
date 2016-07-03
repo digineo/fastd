@@ -6,7 +6,6 @@ import (
 )
 
 const (
-	peerTimeout       = time.Minute
 	peerCheckInterval = 15 * time.Second
 )
 
@@ -39,7 +38,7 @@ func (srv *Server) timeoutPeers() {
 	now := time.Now()
 
 	for _, peer := range srv.peers {
-		if peer.hasTimeout(now) {
+		if peer.hasTimeout(now, srv.config.Timeout) {
 			log.Println(peer.Ifname, "timed out")
 			srv.removePeerLocked(peer)
 		}
@@ -65,7 +64,7 @@ func (peer *Peer) updateCounter(now time.Time) bool {
 }
 
 // Returns whether the peer is timed out
-func (peer *Peer) hasTimeout(now time.Time) bool {
+func (peer *Peer) hasTimeout(now time.Time, peerTimeout time.Duration) bool {
 	if peer.Ifname != "" && peer.updateCounter(now) {
 		return false
 	}

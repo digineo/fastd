@@ -8,6 +8,7 @@ import (
 	"os/signal"
 	"strconv"
 	"syscall"
+	"time"
 
 	"github.com/digineo/fastd/fastd"
 	"github.com/digineo/fastd/ifconfig"
@@ -26,12 +27,14 @@ func main() {
 	case "server":
 		var listenAddr, implName, secret string
 		var listenPort uint
+		var timeout uint
 
 		// Parse flags
 		flags := flag.NewFlagSet("fastd", flag.ExitOnError)
 		flags.StringVar(&implName, "impl", "udp", "Implementation type: udp or kernel")
 		flags.StringVar(&listenAddr, "address", "127.0.0.1", "Listening address")
 		flags.StringVar(&secret, "secret", "", "Secret key")
+		flags.UintVar(&timeout, "timeout", 60, "Peer timeout in seconds")
 		flags.UintVar(&listenPort, "port", 10000, "Listening port")
 		flags.Parse(args)
 
@@ -43,7 +46,8 @@ func main() {
 		}
 
 		config := fastd.Config{
-			Bind: []fastd.Sockaddr{{net.ParseIP(listenAddr), uint16(listenPort)}},
+			Bind:    []fastd.Sockaddr{{net.ParseIP(listenAddr), uint16(listenPort)}},
+			Timeout: time.Duration(timeout) * time.Second,
 			AssignAddresses: func(peer *fastd.Peer) {
 				// Generate addresses for test purposes
 				index, _ := strconv.Atoi(peer.Ifname[5:])
