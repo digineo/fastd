@@ -11,10 +11,10 @@
 #include <sys/param.h>
 #include <sys/buf_ring.h>
 #include <sys/mutex.h>
-#include <sys/param.h>
 #include <sys/poll.h>
 #include <sys/priv.h>
 #include <sys/proc.h>
+#include <sys/refcount.h>
 #include <sys/systm.h>
 #include <sys/mbuf.h>
 #include <sys/socket.h>
@@ -72,6 +72,9 @@
 #define FASTD_CMD_GET_REMOTE	0
 #define FASTD_CMD_SET_REMOTE	1
 #define FASTD_CMD_GET_STATS	2
+
+#define FASTD_ACQUIRE(_sc)	refcount_acquire(&(_sc)->refcnt)
+#define FASTD_RELEASE(_sc)	refcount_release(&(_sc)->refcnt)
 
 #define satoconstsin(sa)  ((const struct sockaddr_in *)(sa))
 #define satoconstsin6(sa) ((const struct sockaddr_in6 *)(sa))
@@ -159,7 +162,7 @@ struct fastd_softc {
 	struct ifnet		*ifp;		/* the interface */
 	fastd_socket_t		*socket;	/* socket for outgoing packets */
 	fastd_sockaddr_t	remote;		/* remote ip address and port */
-	struct mtx		mtx;		/* protect mutable softc fields */
+	volatile u_int		refcnt;		/* reference counter */
 	char			pubkey[FASTD_PUBKEY_SIZE]; /* public key of the peer */
 };
 typedef struct fastd_softc fastd_softc_t;
@@ -172,7 +175,7 @@ LIST_HEAD(fastd_softc_head, fastd_softc);
 struct fastd_softc_head fastd_peers[FASTD_HASH_SIZE];
 
 
-
+static void		fastd_release(fastd_softc_t *);
 static int		fastd_bind_socket(fastd_sockaddr_t*);
 static int		fastd_close_socket(fastd_sockaddr_t*);
 static void		fastd_close_sockets();
@@ -181,7 +184,7 @@ static fastd_socket_t*	fastd_find_socket_locked(const fastd_sockaddr_t*);
 static int		fastd_send_packet(struct uio *uio);
 
 static void	fastd_rcv_udp_packet(struct mbuf *, int, struct inpcb *, const struct sockaddr *, void *);
-static void	fastd_recv_data(struct mbuf *, u_int, u_int, const fastd_sockaddr_t *, fastd_socket_t *);
+static void	fastd_recv_data(struct mbuf *, u_int, u_int, fastd_softc_t *);
 
 static int	fastd_clone_create(struct if_clone *, int, caddr_t);
 static void	fastd_clone_destroy(struct ifnet *);
@@ -479,6 +482,26 @@ DEV_MODULE(fastd, fastd_modevent, NULL);
 
 
 // ------------------------------------------------------------------
+// Locking
+// ------------------------------------------------------------------
+
+
+static void
+fastd_release(fastd_softc_t *sc)
+{
+
+	/*
+	 * The softc may be destroyed as soon as we release our reference,
+	 * so we cannot serialize the wakeup with the softc lock. We use a
+	 * timeout in our sleeps so a missed wakeup is unfortunate but not
+	 * fatal.
+	 */
+	if (FASTD_RELEASE(sc) != 0)
+		wakeup(sc);
+}
+
+
+// ------------------------------------------------------------------
 // Network functions
 // ------------------------------------------------------------------
 
@@ -749,6 +772,7 @@ fastd_rcv_udp_packet(struct mbuf *m, int offset, struct inpcb *inpcb,
 	struct rm_priotracker tracker;
 	fastd_message_t *fastd_msg;
 	fastd_socket_t *fso;
+	fastd_softc_t *sc;
 	char msg_type;
 	int error;
 	u_int datalen;
@@ -762,7 +786,7 @@ fastd_rcv_udp_packet(struct mbuf *m, int offset, struct inpcb *inpcb,
 
 	// drop UDP packets with less than 1 byte payload
 	if (datalen < 1)
-		goto free;
+		goto out;
 
 	m_copydata(m, offset, 1, (caddr_t) &msg_type);
 	rm_rlock(&fastd_lock, &tracker);
@@ -771,12 +795,12 @@ fastd_rcv_udp_packet(struct mbuf *m, int offset, struct inpcb *inpcb,
 	case FASTD_HDR_HANDSHAKE:
 		// Header too short?
 		if (datalen < 4)
-			goto free;
+			goto out;
 
 		// Allocate memory
 		fastd_msg = malloc(sizeof(*fastd_msg) + datalen, M_FASTD, M_NOWAIT);
 		if (fastd_msg == NULL)
-			goto free;
+			goto out;
 		fastd_msg->datalen = datalen;
 
 		// Copy addresses
@@ -798,29 +822,32 @@ fastd_rcv_udp_packet(struct mbuf *m, int offset, struct inpcb *inpcb,
 
 		break;
 	case FASTD_HDR_DATA:
-		fastd_recv_data(m, offset, datalen, (const fastd_sockaddr_t *)sa_src, fso);
-		goto unlock;
+
+		sc = fastd_lookup_peer((fastd_sockaddr_t *)sa_src);
+		if (sc == NULL) {
+			DEBUGF("unable to find peer");
+			goto out;
+		}
+
+		FASTD_ACQUIRE(sc);
+		rm_runlock(&fastd_lock, &tracker);
+		fastd_recv_data(m, offset, datalen, sc);
+		FASTD_RELEASE(sc);
+
+		// unlock/free already done
+		return;
 	default:
 		DEBUGF("invalid packet type=%02X datalen=%d", msg_type, datalen);
 	}
-free:
-	m_freem(m);
-unlock:
+out:
 	rm_runlock(&fastd_lock, &tracker);
+	m_freem(m);
 }
 
 static void
-fastd_recv_data(struct mbuf *m, u_int offset, u_int datalen, const fastd_sockaddr_t *sa_src, fastd_socket_t *socket)
+fastd_recv_data(struct mbuf *m, u_int offset, u_int datalen, fastd_softc_t *sc)
 {
-	fastd_softc_t *sc;
 	int isr, af;
-
-	sc = fastd_lookup_peer(sa_src);
-	if (sc == NULL) {
-		m_freem(m);
-		DEBUGF("unable to find peer");
-		return;
-	}
 
 	if (datalen == 1){
 		// Keepalive packet
@@ -829,7 +856,7 @@ fastd_recv_data(struct mbuf *m, u_int offset, u_int datalen, const fastd_sockadd
 
 		// Remove headers, which results in an empty packet
 		m_adj(m, offset+1);
-		int error = fastd_encap(sc, sa_src, m);
+		int error = fastd_encap(sc, &sc->remote, m);
 
 		if (error) {
 			IFP_DEBUG(sc->ifp, "keepalive response failed: %d", error);
@@ -937,6 +964,7 @@ out:
 static int
 fastd_output(struct ifnet *ifp, struct mbuf *m, const struct sockaddr *dst, struct route *ro)
 {
+	int error;
 	struct rm_priotracker tracker;
 	fastd_sockaddr_t remote;
 	fastd_softc_t *sc;
@@ -959,12 +987,17 @@ fastd_output(struct ifnet *ifp, struct mbuf *m, const struct sockaddr *dst, stru
 		af = dst->sa_family;
 
 	fastd_sockaddr_copy(&remote, &sc->remote);
+
+	FASTD_ACQUIRE(sc);
 	rm_runlock(&fastd_lock, &tracker);
 
 	// Pass to Berkeley Packet Filter
 	BPF_MTAP2(ifp, &af, sizeof(af), m);
 
-	return fastd_encap(sc, &remote, m);
+	error = fastd_encap(sc, &remote, m);
+	fastd_release(sc);
+
+	return (error);
 }
 
 static void
@@ -1023,7 +1056,7 @@ fastd_clone_create(struct if_clone *ifc, int unit, caddr_t params)
 	// inits
 	sc->ifp = ifp;
 	if_initname(ifp, fastdname, unit);
-	mtx_init(&sc->mtx, "fastd_mtx", NULL, MTX_DEF);
+
 	rm_wlock(&fastd_lock);
 
 	// params
@@ -1065,7 +1098,6 @@ fastd_clone_create(struct if_clone *ifc, int unit, caddr_t params)
 	goto unlock;
 
 fail:
-	mtx_destroy(&sc->mtx);
 	if_free(sc->ifp);
 	free(sc, M_FASTD);
 
@@ -1085,7 +1117,6 @@ fastd_clone_destroy(struct ifnet *ifp)
 	sc = ifp->if_softc;
 
 	rm_wlock(&fastd_lock);
-	mtx_destroy(&sc->mtx);
 	fastd_remove_peer(sc);
 	fastd_destroy(sc);
 	rm_wunlock(&fastd_lock);
@@ -1096,6 +1127,9 @@ static void
 fastd_destroy(fastd_softc_t *sc)
 {
 	IFP_DEBUG(sc->ifp, "called");
+
+	while (sc->refcnt != 0)
+		rm_sleep(sc, &fastd_lock, 0, "fastd_destroy", hz);
 
 	LIST_REMOVE(sc, fastd_ifaces);
 	bpfdetach(sc->ifp);
@@ -1178,13 +1212,10 @@ fastd_add_peer(fastd_softc_t *sc, fastd_sockaddr_t *sa, char pubkey[FASTD_PUBKEY
 static void
 fastd_ifinit(struct ifnet *ifp)
 {
-	fastd_softc_t *sc = ifp->if_softc;
-
 	IFP_DEBUG(ifp, "initializing");
 
-	mtx_lock(&sc->mtx);
+	// no locking because no other functions modify if_flags
 	ifp->if_flags |= IFF_UP;
-	mtx_unlock(&sc->mtx);
 }
 
 
