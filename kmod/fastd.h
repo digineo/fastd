@@ -37,8 +37,4 @@ typedef struct {
 #define FASTD_IOCTL_BIND	_IOW('F', 2, fastd_inaddr_t)
 #define FASTD_IOCTL_CLOSE	_IOW('F', 3, fastd_inaddr_t)
 
-#define FASTD_MSG_BUFFER_SIZE	50
-#define FASTD_MAX_DATA_SIZE	1024
-
-
 #endif /* FASTD_H */

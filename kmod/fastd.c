@@ -56,6 +56,9 @@
 #define	FASTD_MTU		1406
 #define	FASTD_PUBKEY_SIZE	32
 
+/* Number of handshake packets in the ringbuffer */
+#define FASTD_MSG_BUFFER_SIZE	50
+
 #define FASTD_SOCKADDR_IS_IPV4(_sin) ((_sin)->sa.sa_family == AF_INET)
 #define FASTD_SOCKADDR_IS_IPV6(_sin) ((_sin)->sa.sa_family == AF_INET6)
 #define FASTD_SOCKADDR_IS_IPV46(_sin) (FASTD_SOCKADDR_IS_IPV4(_sin) || FASTD_SOCKADDR_IS_IPV6(_sin))
@@ -89,8 +92,6 @@ static void fastd_iface_unload(void);
 
 MALLOC_DEFINE(M_FASTD, "fastd_buffer", "buffer for fastd driver");
 
-#define BUFFER_SIZE     256
-
 /* Forward declarations. */
 static d_read_t		fastd_read;
 static d_write_t	fastd_write;
@@ -117,12 +118,14 @@ static struct cdevsw fastd_cdevsw = {
 	.d_name =	"fastd"
 };
 
+static const char fastdname[] = "fastd";
 
-static struct cdev *fastd_dev;
-static struct buf_ring *fastd_msgbuf;
-static struct mtx       fastd_msgmtx;
-static struct selinfo fastd_rsel;
-
+static struct if_clone	*fastd_cloner;
+static struct cdev	*fastd_dev;
+static struct buf_ring	*fastd_msgbuf;
+static struct rmlock	fastd_lock;
+static struct mtx	fastd_msgmtx;
+static struct selinfo	fastd_rsel;
 
 struct fastdudphdr {
 	struct udphdr	fastd_udp;
@@ -149,47 +152,42 @@ static LIST_HEAD(,fastd_socket) fastd_sockets_head = LIST_HEAD_INITIALIZER(fastd
 
 struct fastd_softc {
 	// lists are protected by global fastd_lock
-	LIST_ENTRY(fastd_softc) fastd_ifaces; // list of all interfaces
-	LIST_ENTRY(fastd_softc) fastd_flow_entry; // entry in flow table
-	LIST_ENTRY(fastd_softc) fastd_socket_entry; // list of softc for a socket
+	LIST_ENTRY(fastd_softc) fastd_ifaces;		/* list of all interfaces */
+	LIST_ENTRY(fastd_softc) fastd_flow_entry;	/* entry in flow table */
+	LIST_ENTRY(fastd_softc) fastd_socket_entry;	/* list of softc for a socket */
 
-	struct ifnet		*ifp;  /* the interface */
-	fastd_socket_t		*socket; /* socket for outgoing packets */
-	fastd_sockaddr_t	remote;  /* remote ip address and port */
-	struct mtx		mtx; /* protect mutable softc fields */
+	struct ifnet		*ifp;		/* the interface */
+	fastd_socket_t		*socket;	/* socket for outgoing packets */
+	fastd_sockaddr_t	remote;		/* remote ip address and port */
+	struct mtx		mtx;		/* protect mutable softc fields */
 	char			pubkey[FASTD_PUBKEY_SIZE]; /* public key of the peer */
 };
 typedef struct fastd_softc fastd_softc_t;
 
-// Head of all interfaces
+// Head of all fastd interfaces
 static LIST_HEAD(,fastd_softc) fastd_ifaces_head = LIST_HEAD_INITIALIZER(fastd_softc);
 
-// Mapping from sources addresses to interfaces
+// Mapping from source addresses to interfaces
 LIST_HEAD(fastd_softc_head, fastd_softc);
 struct fastd_softc_head fastd_peers[FASTD_HASH_SIZE];
 
 
 
-static int fastd_bind_socket(fastd_sockaddr_t*);
-static int fastd_close_socket(fastd_sockaddr_t*);
-static void fastd_close_sockets();
-static fastd_socket_t* fastd_find_socket(const fastd_sockaddr_t*);
-static fastd_socket_t* fastd_find_socket_locked(const fastd_sockaddr_t*);
-static int fastd_send_packet(struct uio *uio);
+static int		fastd_bind_socket(fastd_sockaddr_t*);
+static int		fastd_close_socket(fastd_sockaddr_t*);
+static void		fastd_close_sockets();
+static fastd_socket_t*	fastd_find_socket(const fastd_sockaddr_t*);
+static fastd_socket_t*	fastd_find_socket_locked(const fastd_sockaddr_t*);
+static int		fastd_send_packet(struct uio *uio);
 
 static void	fastd_rcv_udp_packet(struct mbuf *, int, struct inpcb *, const struct sockaddr *, void *);
 static void	fastd_recv_data(struct mbuf *, u_int, u_int, const fastd_sockaddr_t *, fastd_socket_t *);
 
-static struct rmlock fastd_lock;
-static const char fastdname[] = "fastd";
-
-static int  fastd_clone_create(struct if_clone *, int, caddr_t);
-static void fastd_clone_destroy(struct ifnet *);
-static void fastd_destroy(fastd_softc_t *sc);
-static int  fastd_ifioctl(struct ifnet *, u_long, caddr_t);
-static int  fastd_ioctl_drvspec(fastd_softc_t *, struct ifdrv *, int);
-static struct if_clone *fastd_cloner;
-
+static int	fastd_clone_create(struct if_clone *, int, caddr_t);
+static void	fastd_clone_destroy(struct ifnet *);
+static void	fastd_destroy(fastd_softc_t *sc);
+static int	fastd_ifioctl(struct ifnet *, u_long, caddr_t);
+static int	fastd_ioctl_drvspec(fastd_softc_t *, struct ifdrv *, int);
 static void	fastd_ifinit(struct ifnet *);
 static void	fastd_ifstart(struct ifnet *);
 static int	fastd_output(struct ifnet *, struct mbuf *, const struct sockaddr *, struct route *ro);
@@ -201,12 +199,12 @@ static int	fastd_add_peer(fastd_softc_t *, fastd_sockaddr_t *, char [FASTD_PUBKE
 static void	fastd_remove_peer(fastd_softc_t *);
 static struct	fastd_softc* fastd_lookup_peer(const fastd_sockaddr_t *);
 
-static void fastd_sockaddr_copy(fastd_sockaddr_t *, const fastd_sockaddr_t *);
-static int  fastd_sockaddr_equal(const fastd_sockaddr_t *, const fastd_sockaddr_t *);
+static void	fastd_sockaddr_copy(fastd_sockaddr_t *, const fastd_sockaddr_t *);
+static int	fastd_sockaddr_equal(const fastd_sockaddr_t *, const fastd_sockaddr_t *);
 
-static int  fastd_ctrl_get_remote(fastd_softc_t *, void *);
-static int  fastd_ctrl_set_remote(fastd_softc_t *, void *);
-static int  fastd_ctrl_get_stats(fastd_softc_t *, void *);
+static int	fastd_ctrl_get_remote(fastd_softc_t *, void *);
+static int	fastd_ctrl_set_remote(fastd_softc_t *, void *);
+static int	fastd_ctrl_get_stats(fastd_softc_t *, void *);
 
 struct fastd_control {
 	int (*fastdc_func)(fastd_softc_t *, void *);
@@ -506,21 +504,22 @@ fastd_bind_socket(fastd_sockaddr_t *sa){
 
 	error = sobind(sock->socket, &sa->sa, curthread);
 
-	if (error){
-		uprintf("can not bind to socket: %d\n", error);
+	if (error) {
+		uprintf("cannot bind to socket: %d\n", error);
 		goto fail;
 	}
 
 	error = udp_set_kernel_tunneling(sock->socket, fastd_rcv_udp_packet, sock);
 
 	if (error) {
-		uprintf("can not set tunneling function: %d\n", error);
+		uprintf("cannot set tunneling function: %d\n", error);
 		goto fail;
 	}
 
 	// Initialize list of assigned interfaces
 	LIST_INIT(&sock->softc_head);
 
+	// Add to list of sockets
 	rm_wlock(&fastd_lock);
 	LIST_INSERT_HEAD(&fastd_sockets_head, sock, list);
 	rm_wunlock(&fastd_lock);
@@ -530,9 +529,10 @@ fastd_bind_socket(fastd_sockaddr_t *sa){
 fail:
 	soclose(sock->socket);
 out:
-	if (error){
+	if (error) {
 		free(sock, M_FASTD);
 	}
+
 	return (error);
 }
 
@@ -562,7 +562,7 @@ fastd_close_socket(fastd_sockaddr_t *sa){
 
 // Closes all sockets
 static void
-fastd_close_sockets(fastd_sockaddr_t *laddr){
+fastd_close_sockets(){
 	fastd_socket_t *sock;
 
 	rm_wlock(&fastd_lock);
@@ -617,8 +617,7 @@ fastd_encap(fastd_softc_t *sc, const fastd_sockaddr_t *dst, struct mbuf *m)
 
 
 static void
-fastd_encap_header(fastd_softc_t *sc, struct mbuf *m, int ipoff,
-    uint16_t srcport, uint16_t dstport)
+fastd_encap_header(fastd_softc_t *sc, struct mbuf *m, int ipoff, uint16_t srcport, uint16_t dstport)
 {
 	struct fastdudphdr *hdr;
 	struct udphdr *udph;
@@ -832,7 +831,7 @@ fastd_recv_data(struct mbuf *m, u_int offset, u_int datalen, const fastd_sockadd
 		m_adj(m, offset+1);
 		int error = fastd_encap(sc, sa_src, m);
 
-		if (error){
+		if (error) {
 			IFP_DEBUG(sc->ifp, "keepalive response failed: %d", error);
 		} else {
 			IFP_DEBUG(sc->ifp, "keepalive replied");
@@ -895,7 +894,7 @@ fastd_send_packet(struct uio *uio) {
 
 	// Copy addresses from user memory
 	error = uiomove((char *)&msg + sizeof(uint16_t), addrlen, uio);
-	if (error){
+	if (error) {
 		goto out;
 	}
 
@@ -918,13 +917,13 @@ fastd_send_packet(struct uio *uio) {
 
 	// Copy payload from user memory
 	error = uiomove(m->m_data, datalen, uio);
-	if (error){
+	if (error) {
 		goto fail;
 	}
 
 	// Send packet
 	error = sosend(sock->socket, &dst_addr.sa, NULL, m, NULL, 0, uio->uio_td);
-	if (error){
+	if (error) {
 		goto fail;
 	}
 
@@ -1310,7 +1309,7 @@ fastd_ioctl_drvspec(fastd_softc_t *sc, struct ifdrv *ifd, int get)
 
 	if (vc->fastdc_flags & FASTD_CTRL_FLAG_COPYIN) {
 		error = copyin(ifd->ifd_data, &args, ifd->ifd_len);
-		if (error){
+		if (error) {
 			IFP_DEBUG(sc->ifp, "copyin failed");
 			return (error);
 		}
