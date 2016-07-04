@@ -19,7 +19,7 @@ func (srv *Server) handlePacket(msg *Message) (reply *Message) {
 		handshakeType = val[0]
 	}
 
-	log.Printf("received handshake %x from %s[%d] using fastd version=%s hostname=%s", handshakeType, msg.Src.IP.String(), msg.Src.Port, records[RECORD_VERSION_NAME], records[RECORD_HOSTNAME])
+	log.Printf("received handshake %x from %v using fastd version=%s hostname=%s", handshakeType, msg.Src, records[RECORD_VERSION_NAME], records[RECORD_HOSTNAME])
 
 	senderKey := records[RECORD_SENDER_KEY]
 	recipientKey := records[RECORD_RECIPIENT_KEY]
@@ -78,6 +78,11 @@ func (srv *Server) handlePacket(msg *Message) (reply *Message) {
 
 	switch handshakeType {
 	case 1:
+		if peer.Ifname != "" {
+			log.Printf("peer %s already connected to %s", hex.EncodeToString(recipientKey), peer.Ifname)
+			return nil
+		}
+
 		if !srv.verifyPeer(peer) {
 			log.Println("verify failed for pubkey", hex.EncodeToString(senderKey))
 			return nil
