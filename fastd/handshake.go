@@ -2,7 +2,9 @@ package fastd
 
 import (
 	"bytes"
+	"encoding/binary"
 	"encoding/hex"
+	"github.com/digineo/fastd/ifconfig"
 	"log"
 	"reflect"
 	"time"
@@ -120,6 +122,19 @@ func (srv *Server) handlePacket(msg *Message) (reply *Message) {
 		msg.SignKey = peer.sharedKey
 		if !srv.handleFinishHandshake(msg, reply, peer) {
 			return nil
+		}
+
+		// Decode and set MTU
+		if val := records[RECORD_MTU]; len(val) == 0 {
+			log.Printf("%v mtu missing", msg.Src)
+		} else if len(val) != 2 {
+			log.Printf("%v mtu invalid: %v", msg.Src, val)
+		} else {
+			if mtu := binary.BigEndian.Uint16(val); mtu < 576 {
+				log.Printf("%v mtu invalid: %d", msg.Src, mtu)
+			} else {
+				ifconfig.SetMTU(peer.Ifname, mtu)
+			}
 		}
 
 	default:

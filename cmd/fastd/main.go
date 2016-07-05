@@ -101,7 +101,7 @@ func main() {
 		}
 	case "setmtu":
 		mtu, _ := strconv.Atoi(args[1])
-		if err := ifconfig.SetMTU(args[0], mtu); err != nil {
+		if err := ifconfig.SetMTU(args[0], uint16(mtu)); err != nil {
 			fmt.Println(err.Error())
 			os.Exit(1)
 		}
