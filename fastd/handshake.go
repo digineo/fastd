@@ -13,45 +13,45 @@ func (srv *Server) handlePacket(msg *Message) (reply *Message) {
 	var handshakeType byte
 
 	if val := records[RECORD_HANDSHAKE_TYPE]; len(val) != 1 {
-		log.Println("handshake type missing")
+		log.Printf("%v handshake type missing", msg.Src)
 		return
 	} else {
 		handshakeType = val[0]
 	}
 
-	log.Printf("received handshake %x from %v using fastd version=%s hostname=%s", handshakeType, msg.Src, records[RECORD_VERSION_NAME], records[RECORD_HOSTNAME])
-
 	senderKey := records[RECORD_SENDER_KEY]
 	recipientKey := records[RECORD_RECIPIENT_KEY]
 	senderHandshakeKey := records[RECORD_SENDER_HANDSHAKE_KEY]
 
+	log.Printf("%v received handshake type=%x version=%s hostname=%s pubkey=%s", msg.Src, handshakeType, records[RECORD_VERSION_NAME], records[RECORD_HOSTNAME], hex.EncodeToString(senderKey))
+
 	if reflect.DeepEqual(msg.Src, msg.Dst) {
-		log.Println("source address equals destination address")
+		log.Printf("%v source address equals destination address", msg.Src)
 		return
 	}
 
 	reply = msg.NewReply()
 
 	if recipientKey == nil {
-		log.Println("recipient key missing")
+		log.Printf("%v recipient key missing", msg.Src)
 		reply.SetError(REPLY_RECORD_MISSING, RECORD_RECIPIENT_KEY)
 		return
 	}
 
 	if !bytes.Equal(recipientKey, srv.config.serverKeys.public[:]) {
-		log.Println("recipient key invalid:", hex.EncodeToString(recipientKey))
+		log.Printf("%v recipient key invalid: %s", msg.Src, hex.EncodeToString(recipientKey))
 		reply.SetError(REPLY_UNACCEPTABLE_VALUE, RECORD_RECIPIENT_KEY)
 		return
 	}
 
 	if senderKey == nil {
-		log.Println("sender key missing")
+		log.Printf("%v sender key missing", msg.Src)
 		reply.SetError(REPLY_RECORD_MISSING, RECORD_SENDER_KEY)
 		return
 	}
 
 	if senderHandshakeKey == nil {
-		log.Println("sender handshake key missing")
+		log.Printf("%v sender handshake key missing", msg.Src)
 		reply.SetError(REPLY_RECORD_MISSING, RECORD_SENDER_HANDSHAKE_KEY)
 		return
 	}
@@ -62,7 +62,7 @@ func (srv *Server) handlePacket(msg *Message) (reply *Message) {
 	peer.lastSeen = time.Now()
 
 	if !peer.makeSharedHandshakeKey(srv.config.serverKeys) {
-		log.Println("unable to make shared handshake key")
+		log.Printf("%v unable to make shared handshake key", msg.Src)
 		return nil
 	}
 
@@ -79,12 +79,12 @@ func (srv *Server) handlePacket(msg *Message) (reply *Message) {
 	switch handshakeType {
 	case 1:
 		if peer.Ifname != "" {
-			log.Printf("peer %s already connected to %s", hex.EncodeToString(recipientKey), peer.Ifname)
+			log.Printf("%v already connected to %s", msg.Src, peer.Ifname)
 			return nil
 		}
 
 		if !srv.verifyPeer(peer) {
-			log.Println("verify failed for pubkey", hex.EncodeToString(senderKey))
+			log.Printf("%v verify failed", msg.Src)
 			return nil
 		}
 
@@ -92,7 +92,7 @@ func (srv *Server) handlePacket(msg *Message) (reply *Message) {
 		var err error
 		peer.Ifname, err = Clone(msg.Src, senderKey)
 		if err != nil {
-			log.Println("cloning failed:", err)
+			log.Printf("%v cloning failed: %s", msg.Src, err)
 			return nil
 		}
 
@@ -121,8 +121,9 @@ func (srv *Server) handlePacket(msg *Message) (reply *Message) {
 		if !srv.handleFinishHandshake(msg, reply, peer) {
 			return nil
 		}
+
 	default:
-		log.Printf("unsupported handshake type: %d", handshakeType)
+		log.Printf("%v unsupported handshake type", msg.Src)
 	}
 
 	return
