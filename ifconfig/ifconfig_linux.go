@@ -29,7 +29,7 @@ func GetMTU(ifname string) (int, error) {
 	return 0, notImplemented
 }
 
-func SetMTU(ifname string, mtu int) error {
+func SetMTU(ifname string, mtu uint16) error {
 	return notImplemented
 }
 

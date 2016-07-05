@@ -62,7 +62,7 @@ func Clone(name string, data unsafe.Pointer) (string, error) {
 	}
 }
 
-func GetMTU(ifname string) (int, error) {
+func GetMTU(ifname string) (uint16, error) {
 	c_ifname := C.CString(ifname)
 	defer C.free(unsafe.Pointer(c_ifname))
 
@@ -70,11 +70,11 @@ func GetMTU(ifname string) (int, error) {
 	if err := C.get_mtu(c_ifname, &mtu); err != 0 {
 		return 0, syscall.Errno(err)
 	} else {
-		return int(mtu), nil
+		return uint16(mtu), nil
 	}
 }
 
-func SetMTU(ifname string, mtu int) error {
+func SetMTU(ifname string, mtu uint16) error {
 	c_ifname := C.CString(ifname)
 	defer C.free(unsafe.Pointer(c_ifname))
 
