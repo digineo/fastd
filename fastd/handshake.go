@@ -85,8 +85,8 @@ func (srv *Server) handlePacket(msg *Message) (reply *Message) {
 			return nil
 		}
 
-		if !srv.verifyPeer(peer) {
-			log.Printf("%v verify failed", msg.Src)
+		if err := srv.verifyPeer(peer); err != nil {
+			log.Printf("%v verify failed: %s", msg.Src, err)
 			return nil
 		}
 

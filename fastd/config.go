@@ -11,7 +11,7 @@ type Config struct {
 	serverKeys      *KeyPair
 	Timeout         time.Duration
 	AssignAddresses func(*Peer)
-	OnVerify        func(*Peer) bool
+	OnVerify        func(*Peer) error
 	OnEstablish     func(*Peer) bool
 	OnDisestablish  func(*Peer)
 }

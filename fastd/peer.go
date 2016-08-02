@@ -79,13 +79,15 @@ func (srv *Server) addPeer(in *Peer) {
 	return
 }
 
-func (srv *Server) verifyPeer(peer *Peer) bool {
-	if srv.config.OnVerify == nil || srv.config.OnVerify(peer) {
-		peer.handshakeTimeout = time.Now().Add(time.Second * 3)
-		return true
-	} else {
-		return false
+func (srv *Server) verifyPeer(peer *Peer) error {
+	if srv.config.OnVerify == nil {
+		return nil
 	}
+	err := srv.config.OnVerify(peer)
+	if err == nil {
+		peer.handshakeTimeout = time.Now().Add(time.Second * 3)
+	}
+	return err
 }
 
 func (srv *Server) establishPeer(peer *Peer) bool {
