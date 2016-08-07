@@ -10,7 +10,7 @@ import (
 
 type Server struct {
 	peers    map[string]*Peer
-	peersMtx sync.Mutex
+	peersMtx sync.RWMutex
 	impl     ServerImpl
 	config   Config
 	wg       sync.WaitGroup

@@ -40,8 +40,8 @@ func NewPeer(addr Sockaddr) *Peer {
 
 // Returns all peers
 func (srv *Server) GetPeers() []*Peer {
-	srv.peersMtx.Lock()
-	defer srv.peersMtx.Unlock()
+	srv.peersMtx.RLock()
+	defer srv.peersMtx.RUnlock()
 
 	i := 0
 	peers := make([]*Peer, len(srv.peers))
