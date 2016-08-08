@@ -41,6 +41,10 @@ func (srv *Server) timeoutPeers() {
 		if peer.hasTimeout(now, srv.config.Timeout) {
 			log.Println(peer.Ifname, "timed out")
 			srv.removePeerLocked(peer)
+
+			if f := srv.config.OnTimeout; f != nil {
+				f(peer)
+			}
 		}
 	}
 }

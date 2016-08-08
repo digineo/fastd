@@ -13,7 +13,7 @@ type Config struct {
 	AssignAddresses func(*Peer)
 	OnVerify        func(*Peer) error
 	OnEstablish     func(*Peer) bool
-	OnDisestablish  func(*Peer)
+	OnTimeout       func(*Peer)
 }
 
 // Set the server's key
