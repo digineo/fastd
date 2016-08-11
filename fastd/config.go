@@ -12,7 +12,7 @@ type Config struct {
 	Timeout         time.Duration
 	AssignAddresses func(*Peer)
 	OnVerify        func(*Peer) error
-	OnEstablish     func(*Peer) bool
+	OnEstablished   func(*Peer)
 	OnTimeout       func(*Peer)
 }
 

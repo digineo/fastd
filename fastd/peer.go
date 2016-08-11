@@ -91,7 +91,7 @@ func (srv *Server) verifyPeer(peer *Peer) error {
 }
 
 func (srv *Server) establishPeer(peer *Peer) bool {
-	return peer.handshakeTimeout.After(time.Now()) && (srv.config.OnEstablish == nil || srv.config.OnEstablish(peer))
+	return peer.handshakeTimeout.After(time.Now())
 }
 
 // Removes a peer and its interface

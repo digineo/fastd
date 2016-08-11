@@ -174,5 +174,10 @@ func (srv *Server) handleFinishHandshake(msg *Message, reply *Message, peer *Pee
 	peer.SetAddresses(peer.IPv4)
 	peer.SetAddresses(peer.IPv6)
 
+	// Established hook
+	if f := srv.config.OnEstablished; f != nil {
+		f(peer)
+	}
+
 	return false
 }
