@@ -97,6 +97,13 @@ func (srv *Server) establishPeer(peer *Peer) bool {
 	return peer.handshakeTimeout.After(time.Now())
 }
 
+// Removes (disconnects) a peer
+func (srv *Server) RemovePeer(peer *Peer) {
+	srv.peersMtx.Lock()
+	srv.removePeerLocked(peer)
+	srv.peersMtx.Unlock()
+}
+
 // Removes a peer and its interface
 func (srv *Server) removePeerLocked(peer *Peer) {
 	if peer.Ifname != "" {
