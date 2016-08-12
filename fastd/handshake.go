@@ -170,9 +170,7 @@ func (srv *Server) handleFinishHandshake(msg *Message, reply *Message, peer *Pee
 	// Clear handshake keys
 	peer.sharedKey = nil
 	peer.peerHandshakeKey = nil
-
-	peer.SetAddresses(peer.IPv4)
-	peer.SetAddresses(peer.IPv6)
+	peer.assignAddresses()
 
 	// Established hook
 	if f := srv.config.OnEstablished; f != nil {

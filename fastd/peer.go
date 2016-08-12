@@ -2,6 +2,7 @@ package fastd
 
 import (
 	"github.com/digineo/fastd/ifconfig"
+	"log"
 	"net"
 	"time"
 )
@@ -102,11 +103,18 @@ func (srv *Server) removePeerLocked(peer *Peer) {
 	delete(srv.peers, string(peer.Remote.Raw()))
 }
 
-// Set local and destination address for the PTP interface
-func (peer *Peer) SetAddresses(config AddressConfig) error {
-	if config.LocalAddr != nil && config.DestAddr != nil {
-		return SetAddrPTP(peer.Ifname, config.LocalAddr, config.DestAddr)
-	} else {
-		return nil
+// Assign tunnel addresses
+func (peer *Peer) assignAddresses() {
+	peer.IPv4.Assign(peer.Ifname)
+	peer.IPv6.Assign(peer.Ifname)
+}
+
+// Assign local and destination address to the PTP interface
+func (config *AddressConfig) Assign(ifname string) {
+	if config.LocalAddr == nil || config.DestAddr == nil {
+		return
+	}
+	if err := SetAddrPTP(ifname, config.LocalAddr, config.DestAddr); err != nil {
+		log.Printf("Setting addresses for %s failed: %s", ifname, err)
 	}
 }
