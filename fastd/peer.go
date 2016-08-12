@@ -80,6 +80,7 @@ func (srv *Server) addPeer(in *Peer) {
 	return
 }
 
+// Calls the OnVerify hook (if exists) and sets the handshake timeout
 func (srv *Server) verifyPeer(peer *Peer) error {
 	if srv.config.OnVerify == nil {
 		return nil
@@ -91,6 +92,7 @@ func (srv *Server) verifyPeer(peer *Peer) error {
 	return err
 }
 
+// checks the handshake timeout
 func (srv *Server) establishPeer(peer *Peer) bool {
 	return peer.handshakeTimeout.After(time.Now())
 }

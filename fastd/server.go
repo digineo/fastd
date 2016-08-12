@@ -9,7 +9,7 @@ import (
 )
 
 type Server struct {
-	peers    map[string]*Peer
+	peers    map[string]*Peer // indexed by remote endpoint
 	peersMtx sync.RWMutex
 	impl     ServerImpl
 	config   Config

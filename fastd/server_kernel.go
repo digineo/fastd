@@ -52,6 +52,7 @@ func NewKernelServer(addresses []Sockaddr) (ServerImpl, error) {
 		// may fail
 		srv.ioctl(ioctl_CLOSE, address)
 
+		// tell the kernel module to bind to an address
 		if err = srv.ioctl(ioctl_BIND, address); err != nil {
 			srv.Close()
 			return nil, fmt.Errorf("bind() failed:", err)
@@ -87,6 +88,7 @@ func (srv *KernelServer) Close() {
 	close(srv.recv)
 }
 
+// Iterates over existing interfaces and returns the peers
 func (srv *KernelServer) Peers() (peers []*Peer) {
 	ifaces, err := net.Interfaces()
 	if err != nil {

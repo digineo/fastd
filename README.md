@@ -1,5 +1,7 @@
 # fastd
 
+An implementation of the [fastd](https://projects.universe-factory.net/projects/fastd/wiki) VPN protocol for FreeBSD.
+It consists of a kernel module and a user space daemon written in [Go](https://golang.org/).
 
 ## Features
 
@@ -28,5 +30,5 @@ To create a debug build:
 ### Daemon
 
     pkg install go pkgconf libuecc
-    go get ...
-    go install ...
+    go get github.com/digineo/fastd
+    go install github.com/digineo/fastd
