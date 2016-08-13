@@ -13,13 +13,10 @@ type AddressConfig struct {
 }
 
 type Peer struct {
-	Remote           Sockaddr
-	PublicKey        []byte
-	sharedKey        []byte
-	peerHandshakeKey []byte   // public handshake key from Alice
-	ourHandshakeKey  *KeyPair // our handshake key
-	handshakeTimeout time.Time
-	lastSeen         time.Time
+	Remote    Sockaddr
+	PublicKey []byte
+	handshake *handshake // handshake until it's finished
+	lastSeen  time.Time
 
 	Ifname   string
 	MTU      uint16
@@ -33,9 +30,8 @@ type Peer struct {
 
 func NewPeer(addr Sockaddr) *Peer {
 	return &Peer{
-		Remote:          addr,
-		ourHandshakeKey: RandomKeypair(),
-		lastSeen:        time.Now(),
+		Remote:   addr,
+		lastSeen: time.Now(),
 	}
 }
 
@@ -86,15 +82,19 @@ func (srv *Server) verifyPeer(peer *Peer) error {
 		return nil
 	}
 	err := srv.config.OnVerify(peer)
-	if err == nil {
-		peer.handshakeTimeout = time.Now().Add(time.Second * 3)
+	if hs := peer.handshake; err == nil && hs != nil {
+		hs.timeout = time.Now().Add(time.Second * 3)
 	}
 	return err
 }
 
 // checks the handshake timeout
 func (srv *Server) establishPeer(peer *Peer) bool {
-	return peer.handshakeTimeout.After(time.Now())
+	if hs := peer.handshake; hs == nil {
+		return false
+	} else {
+		return hs.timeout.After(time.Now())
+	}
 }
 
 // Removes (disconnects) a peer

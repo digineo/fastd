@@ -14,11 +14,8 @@ func TestHandshake(t *testing.T) {
 	srv.config.serverKeys = testServerSecret
 	srv.peers = make(map[string]*Peer)
 
-	peer := &Peer{
-		Remote:          peerAddr,
-		ourHandshakeKey: testHandshakeKey,
-	}
-	srv.addPeer(peer)
+	peer := srv.GetPeer(peerAddr)
+	assert.Nil(peer.handshake)
 
 	// Handshake request (0x01)
 	msg := readTestmsg("null-request.dat")
@@ -27,6 +24,7 @@ func TestHandshake(t *testing.T) {
 	reply := srv.handlePacket(msg)
 	assert.NotNil(reply)
 	assert.NotNil(reply.SignKey)
+	assert.NotNil(peer.handshake)
 	assert.Equal([]byte{2}, reply.Records[RECORD_HANDSHAKE_TYPE])
 	assert.Equal([]byte{0}, reply.Records[RECORD_REPLY_CODE])
 	assert.Equal(msg.Records[RECORD_SENDER_KEY], reply.Records[RECORD_RECIPIENT_KEY])
@@ -38,5 +36,4 @@ func TestHandshake(t *testing.T) {
 	// Handle finish
 	reply = srv.handlePacket(msg)
 	assert.Nil(reply)
-	assert.Nil(peer.sharedKey)
 }

@@ -10,6 +10,26 @@ import (
 	"time"
 )
 
+type handshake struct {
+	sharedKey        []byte
+	peerHandshakeKey []byte   // public handshake key from Alice
+	ourHandshakeKey  *KeyPair // our handshake key
+	timeout          time.Time
+}
+
+func newHandshake(serverKey *KeyPair, publicKey, peerHandshakeKey []byte) *handshake {
+	hs := handshake{
+		peerHandshakeKey: peerHandshakeKey,
+		ourHandshakeKey:  RandomKeypair(),
+	}
+
+	if hs.makeSharedKey(serverKey, publicKey) {
+		return &hs
+	} else {
+		return nil
+	}
+}
+
 func (srv *Server) handlePacket(msg *Message) (reply *Message) {
 	records := msg.Records
 	var handshakeType byte
@@ -59,32 +79,43 @@ func (srv *Server) handlePacket(msg *Message) (reply *Message) {
 	}
 
 	peer := srv.GetPeer(msg.Src)
-	peer.PublicKey = senderKey
-	peer.peerHandshakeKey = senderHandshakeKey
-	peer.lastSeen = time.Now()
 
-	if !peer.makeSharedHandshakeKey(srv.config.serverKeys) {
-		log.Printf("%v unable to make shared handshake key", msg.Src)
+	if peer.PublicKey == nil {
+		peer.PublicKey = senderKey
+	} else if !bytes.Equal(peer.PublicKey, senderKey) {
+		log.Printf("%v peer changed public key old=%s new=%s", msg.Src, hex.EncodeToString(peer.PublicKey), hex.EncodeToString(senderKey))
 		return nil
 	}
 
-	reply.SignKey = peer.sharedKey
+	hs := peer.handshake
+
+	// start new handshake?
+	if handshakeType == 1 {
+		hs = newHandshake(srv.config.serverKeys, senderKey, senderHandshakeKey)
+		if hs == nil {
+			log.Printf("%v unable to make shared handshake key", msg.Src)
+			return nil
+		}
+		peer.handshake = hs
+	} else if hs == nil {
+		log.Printf("%v no handshake started", msg.Src)
+		return nil
+	}
+
+	peer.lastSeen = time.Now()
+
+	reply.SignKey = hs.sharedKey
 	reply.Records[RECORD_REPLY_CODE] = []byte{REPLY_SUCCESS}
 	reply.Records[RECORD_METHOD_LIST] = []byte("null")
 	reply.Records[RECORD_VERSION_NAME] = []byte("v18")
 	reply.Records[RECORD_MTU] = records[RECORD_MTU]
 	reply.Records[RECORD_SENDER_KEY] = srv.config.serverKeys.public[:]
-	reply.Records[RECORD_SENDER_HANDSHAKE_KEY] = peer.ourHandshakeKey.public[:]
+	reply.Records[RECORD_SENDER_HANDSHAKE_KEY] = hs.ourHandshakeKey.public[:]
 	reply.Records[RECORD_RECIPIENT_KEY] = senderKey
 	reply.Records[RECORD_RECIPIENT_HANDSHAKE_KEY] = senderHandshakeKey
 
 	switch handshakeType {
 	case 1:
-		if peer.Ifname != "" {
-			log.Printf("%v already connected to %s", msg.Src, peer.Ifname)
-			return nil
-		}
-
 		if err := srv.verifyPeer(peer); err != nil {
 			log.Printf("%v verify failed: %s", msg.Src, err)
 			return nil
@@ -92,10 +123,13 @@ func (srv *Server) handlePacket(msg *Message) (reply *Message) {
 
 		// Assign interface and addresses
 		var err error
-		peer.Ifname, err = Clone(msg.Src, senderKey)
-		if err != nil {
-			log.Printf("%v cloning failed: %s", msg.Src, err)
-			return nil
+		if peer.Ifname == "" {
+			peer.Ifname, err = Clone(msg.Src, senderKey)
+
+			if err != nil {
+				log.Printf("%v cloning failed: %s", msg.Src, err)
+				return nil
+			}
 		}
 
 		if f := srv.config.AssignAddresses; f != nil {
@@ -119,7 +153,7 @@ func (srv *Server) handlePacket(msg *Message) (reply *Message) {
 			reply.Records[RECORD_IPV6_DSTADDR] = []byte(peer.IPv6.LocalAddr.To16())
 		}
 	case 3:
-		msg.SignKey = peer.sharedKey
+		msg.SignKey = hs.sharedKey
 		if !srv.handleFinishHandshake(msg, reply, peer) {
 			return nil
 		}
@@ -168,8 +202,8 @@ func (srv *Server) handleFinishHandshake(msg *Message, reply *Message, peer *Pee
 	}
 
 	// Clear handshake keys
-	peer.sharedKey = nil
-	peer.peerHandshakeKey = nil
+	peer.handshake = nil
+
 	peer.assignAddresses()
 
 	// Established hook
