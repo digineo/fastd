@@ -15,7 +15,6 @@
 #include <sys/priv.h>
 #include <sys/proc.h>
 #include <sys/refcount.h>
-#include <sys/systm.h>
 #include <sys/mbuf.h>
 #include <sys/socket.h>
 #include <sys/sockio.h>
@@ -541,7 +540,7 @@ fastd_bind_socket(fastd_sockaddr_t *sa){
 		goto fail;
 	}
 
-	error = udp_set_kernel_tunneling(sock->socket, fastd_rcv_udp_packet, sock);
+	error = udp_set_kernel_tunneling(sock->socket, fastd_rcv_udp_packet, NULL, sock);
 
 	if (error) {
 		uprintf("cannot set tunneling function: %d\n", error);
@@ -1351,10 +1350,11 @@ out:
 static int
 fastd_ctrl_get_stats(fastd_softc_t *sc, void *arg)
 {
+	struct ifnet *ifp = sc->ifp;
 	struct iffastdstats *stats = arg;
 
-	stats->ipackets = sc->ifp->if_ipackets;
-	stats->opackets = sc->ifp->if_opackets;
+	stats->ipackets = ifp->if_get_counter(ifp, IFCOUNTER_IPACKETS);
+	stats->opackets = ifp->if_get_counter(ifp, IFCOUNTER_OPACKETS);
 
 	return (0);
 }
@@ -1426,13 +1426,15 @@ fastd_ifioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
 		char ip6buf[INET6_ADDRSTRLEN];
 		switch (sc->remote.sa.sa_family) {
 		case AF_INET:
-			sprintf(ifs->ascii + strlen(ifs->ascii),
+			snprintf(ifs->ascii, sizeof(ifs->ascii),
 			"\tremote port=%d inet4=%s\n", ntohs(sc->remote.in4.sin_port), inet_ntoa(sc->remote.in4.sin_addr));
 			break;
 		case AF_INET6:
-			sprintf(ifs->ascii + strlen(ifs->ascii),
+			snprintf(ifs->ascii, sizeof(ifs->ascii),
 			"\tremote port=%d inet6=%s\n", ntohs(sc->remote.in6.sin6_port), ip6_sprintf(ip6buf, &sc->remote.in6.sin6_addr));
 			break;
+		default:
+			ifs->ascii[0] = '\0';
 		}
 		break;
 	case SIOCSIFADDR:
