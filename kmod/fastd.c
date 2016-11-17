@@ -256,14 +256,14 @@ sock_to_inet(fastd_inaddr_t *dst, const fastd_sockaddr_t *src){
 // Copies a fastd_sockaddr into fastd_inaddr
 static inline void
 inet_to_sock(fastd_sockaddr_t *dst, const fastd_inaddr_t *src){
-	if (IN6_IS_ADDR_V4MAPPED((struct in6_addr *)src)){
+	if (IN6_IS_ADDR_V4MAPPED((const struct in6_addr *)src)){
 		// zero struct
 		bzero(dst, sizeof(struct sockaddr_in));
 
 		dst->in4.sin_len    = sizeof(struct sockaddr_in);
 		dst->in4.sin_family = AF_INET;
-		memcpy(&dst->in4.sin_addr, (char *)&src->addr + 12, 4);
-		memcpy(&dst->in4.sin_port,         &src->port, 2);
+		memcpy(&dst->in4.sin_addr, (const char *)&src->addr + 12, 4);
+		memcpy(&dst->in4.sin_port,               &src->port, 2);
 	}else{
 		// zero struct
 		bzero(dst, sizeof(struct sockaddr_in6));
@@ -813,7 +813,7 @@ fastd_rcv_udp_packet(struct mbuf *m, int offset, struct inpcb *inpcb,
 		fastd_msg->datalen = datalen;
 
 		// Copy addresses
-		sock_to_inet(&fastd_msg->src, (fastd_sockaddr_t *)sa_src);
+		sock_to_inet(&fastd_msg->src, (const fastd_sockaddr_t *)sa_src);
 		sock_to_inet(&fastd_msg->dst, &fso->laddr);
 
 		// Copy fastd packet
@@ -832,7 +832,7 @@ fastd_rcv_udp_packet(struct mbuf *m, int offset, struct inpcb *inpcb,
 		break;
 	case FASTD_HDR_DATA:
 
-		sc = fastd_lookup_peer((fastd_sockaddr_t *)sa_src);
+		sc = fastd_lookup_peer((const fastd_sockaddr_t *)sa_src);
 		if (sc == NULL) {
 			DEBUGF("unable to find peer");
 			goto out;
