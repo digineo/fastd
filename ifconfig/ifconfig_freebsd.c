@@ -29,7 +29,7 @@ set_fd(sa_family_t af){
 
 static inline void
 mask32(struct sockaddr_in *sa){
-	sa->sin_len    = sizeof(struct sockaddr_in6);
+	sa->sin_len    = sizeof(struct sockaddr_in);
 	sa->sin_family = AF_INET;
 	memset(&sa->sin_addr, '\xff', sizeof(struct in_addr));
 }
@@ -166,8 +166,8 @@ add_addr4_ptp(char* ifname, struct sockaddr_in *addr, struct sockaddr_in *dstadd
 	bzero(&req, sizeof(req));
 
 	strlcpy(req.ifra_name,      ifname,  sizeof(req.ifra_name));
-	memcpy(&req.ifra_addr,      addr,    sizeof(struct sockaddr));
-	memcpy(&req.ifra_broadaddr, dstaddr, sizeof(struct sockaddr));
+	memcpy(&req.ifra_addr,      addr,    sizeof(struct sockaddr_in));
+	memcpy(&req.ifra_broadaddr, dstaddr, sizeof(struct sockaddr_in));
 	mask32((struct sockaddr_in *)&req.ifra_mask);
 
 	return ioctl(ioctl_fd4, SIOCAIFADDR, &req);
