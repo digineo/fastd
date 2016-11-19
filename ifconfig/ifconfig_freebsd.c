@@ -42,7 +42,6 @@ mask128(struct sockaddr_in6 *sa, uint8_t len){
 	sa->sin6_len    = sizeof(struct sockaddr_in6);
 	sa->sin6_family = AF_INET6;
 
-
 	memset((void *)&sa->sin6_addr, 0x00, sizeof(sa->sin6_addr));
 	for (cp = (u_char *)&sa->sin6_addr; len > 7; len -= 8)
 		*cp++ = 0xff;

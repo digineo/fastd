@@ -15,6 +15,7 @@ import (
 	"unsafe"
 )
 
+// Initializes AF_INET and AF_INET6 control sockets that are required by many of the C functions
 func init() {
 	if res := C.set_fd(syscall.AF_INET); res != 0 {
 		panic(fmt.Sprintln("set_fd(AF_INET) failed:", syscall.Errno(res)))
@@ -28,22 +29,14 @@ func GetDrvSpec(ifname string, cmd C.ulong, data unsafe.Pointer, len uintptr) er
 	name := C.CString(ifname)
 	defer C.free(unsafe.Pointer(name))
 
-	if res := C.get_drv_spec(name, cmd, data, C.size_t(len)); res == 0 {
-		return nil
-	} else {
-		return syscall.Errno(res)
-	}
+	return retval(C.get_drv_spec(name, cmd, data, C.size_t(len)))
 }
 
 func SetDrvSpec(ifname string, cmd C.ulong, data unsafe.Pointer, len uintptr) error {
 	name := C.CString(ifname)
 	defer C.free(unsafe.Pointer(name))
 
-	if res := C.set_drv_spec(name, cmd, data, C.size_t(len)); res == 0 {
-		return nil
-	} else {
-		return syscall.Errno(res)
-	}
+	return retval(C.set_drv_spec(name, cmd, data, C.size_t(len)))
 }
 
 func Clone(name string, data unsafe.Pointer) (string, error) {
@@ -78,11 +71,7 @@ func SetMTU(ifname string, mtu uint16) error {
 	c_ifname := C.CString(ifname)
 	defer C.free(unsafe.Pointer(c_ifname))
 
-	if err := C.set_mtu(c_ifname, C.int(mtu)); err != 0 {
-		return syscall.Errno(err)
-	} else {
-		return nil
-	}
+	return retval(C.set_mtu(c_ifname, C.int(mtu)))
 }
 
 func GetDescr(ifname string) (string, error) {
@@ -103,11 +92,7 @@ func SetDescr(ifname string, descr string) error {
 	defer C.free(unsafe.Pointer(c_ifname))
 	defer C.free(unsafe.Pointer(c_descr))
 
-	if err := C.set_descr(c_ifname, c_descr); err != 0 {
-		return syscall.Errno(err)
-	} else {
-		return nil
-	}
+	return retval(C.set_descr(c_ifname, c_descr))
 }
 
 func Destroy(name string) error {
@@ -117,15 +102,10 @@ func Destroy(name string) error {
 		ifname[i] = C.char(c)
 	}
 
-	if err := C.if_destroy(&ifname[0]); err != 0 {
-		return syscall.Errno(err)
-	} else {
-		return nil
-	}
+	return retval(C.if_destroy(&ifname[0]))
 }
 
 func SetAddr(ifname string, addr net.IP, prefixlen uint8) (err error) {
-	var res uintptr
 	name := C.CString(ifname)
 	defer C.free(unsafe.Pointer(name))
 
@@ -134,17 +114,11 @@ func SetAddr(ifname string, addr net.IP, prefixlen uint8) (err error) {
 	}
 
 	addr_sa := (*C.struct_sockaddr_in6)(unsafe.Pointer(Sockaddr(addr)))
-	res = uintptr(C.add_addr6(name, addr_sa, C.uint8_t(prefixlen)))
-
-	if res != 0 {
-		err = syscall.Errno(res)
-	}
-
-	return
+	return retval(C.add_addr6(name, addr_sa, C.uint8_t(prefixlen)))
 }
 
 func SetAddrPTP(ifname string, addr, dstaddr net.IP) (err error) {
-	var res uintptr
+	var res C.int
 	name := C.CString(ifname)
 	defer C.free(unsafe.Pointer(name))
 
@@ -152,17 +126,13 @@ func SetAddrPTP(ifname string, addr, dstaddr net.IP) (err error) {
 		C.remove_addr4(name)
 		addr_sa := (*C.struct_sockaddr_in)(unsafe.Pointer(Sockaddr(addr)))
 		dstaddr_sa := (*C.struct_sockaddr_in)(unsafe.Pointer(Sockaddr(dstaddr)))
-		res = uintptr(C.add_addr4_ptp(name, addr_sa, dstaddr_sa))
+		res = C.add_addr4_ptp(name, addr_sa, dstaddr_sa)
 	} else {
 		addr_sa := (*C.struct_sockaddr_in6)(unsafe.Pointer(Sockaddr(addr)))
 		dstaddr_sa := (*C.struct_sockaddr_in6)(unsafe.Pointer(Sockaddr(dstaddr)))
 		C.remove_addr6(name, addr_sa)
-		res = uintptr(C.add_addr6_ptp(name, addr_sa, dstaddr_sa))
+		res = C.add_addr6_ptp(name, addr_sa, dstaddr_sa)
 	}
 
-	if res != 0 {
-		err = syscall.Errno(res)
-	}
-
-	return
+	return retval(res)
 }
