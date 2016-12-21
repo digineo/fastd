@@ -1450,7 +1450,7 @@ fastd_ifioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
 		break;
 	case SIOCGDRVSPEC:
 	case SIOCSDRVSPEC:
-		//printf("SIOCGDRVSPEC/SIOCSDRVSPEC ifname=%s cmd=%lx len=%lu\n", ifd->ifd_name, ifd->ifd_cmd, ifd->ifd_len);
+		DEBUGF("SIOCGDRVSPEC/SIOCSDRVSPEC ifname=%s cmd=%lx len=%lu\n", ifd->ifd_name, ifd->ifd_cmd, ifd->ifd_len);
 		error = fastd_ioctl_drvspec(sc, ifd, cmd == SIOCGDRVSPEC);
 		break;
 	case SIOCSIFFLAGS:
