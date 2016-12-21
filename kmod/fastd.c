@@ -80,9 +80,6 @@
 #define FASTD_ACQUIRE(_sc)	refcount_acquire(&(_sc)->refcnt)
 #define FASTD_RELEASE(_sc)	refcount_release(&(_sc)->refcnt)
 
-#define satoconstsin(sa)  ((const struct sockaddr_in *)(sa))
-#define satoconstsin6(sa) ((const struct sockaddr_in6 *)(sa))
-
 struct iffastdcfg {
 	char			pubkey[FASTD_PUBKEY_SIZE];
 	fastd_inaddr_t	remote;
