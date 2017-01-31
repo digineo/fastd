@@ -1165,11 +1165,29 @@ fastd_destroy(fastd_softc_t *sc)
 
 static void
 fastd_teardown(fastd_softc_t *sc) {
-	rm_assert(&fastd_lock, RA_WLOCKED);
+	struct ifnet *ifp = sc->ifp;
 
+	rm_assert(&fastd_lock, RA_WLOCKED);
 	sc->flags |= FASTD_FLAG_TEARDOWN;
-	sc->ifp->if_flags &= ~IFF_UP;
-	sc->ifp->if_drv_flags &= ~IFF_DRV_RUNNING;
+
+	if (ifp->if_flags & IFF_UP) {
+		rm_wunlock(&fastd_lock);
+		if_down(ifp);
+		rm_wlock(&fastd_lock);
+	}
+
+	if (ifp->if_drv_flags & IFF_DRV_RUNNING) {
+		struct ifaddr *ifa;
+
+		ifp->if_drv_flags &= ~IFF_DRV_RUNNING;
+		rm_wunlock(&fastd_lock);
+
+		TAILQ_FOREACH(ifa, &ifp->if_addrhead, ifa_link) {
+			rtinit(ifa, (int)RTM_DELETE, 0);
+		}
+		if_purgeaddrs(ifp);
+		rm_wlock(&fastd_lock);
+	}
 
 	fastd_remove_peer(sc);
 }
