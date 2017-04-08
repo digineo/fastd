@@ -37,16 +37,17 @@ import (
 )
 
 const (
-	// The length of public/private key in bytes
+	// KEYSIZE is the length of a public/private key in bytes
 	KEYSIZE = 32
 )
 
+// KeyPair keeps the secret and public key
 type KeyPair struct {
 	secret [KEYSIZE]byte
 	public [KEYSIZE]byte
 }
 
-// Generates a random keypair
+// RandomKeypair generates a random keypair
 func RandomKeypair() (keys *KeyPair) {
 	var eccSecret C.ecc_int256_t
 	if _, err := rand.Read(eccSecret[:]); err != nil {
@@ -57,7 +58,7 @@ func RandomKeypair() (keys *KeyPair) {
 	return NewKeyPair(eccSecret[:])
 }
 
-// Generates a keypair from the given secret
+// NewKeyPair generates a keypair from the given secret
 func NewKeyPair(secret []byte) *KeyPair {
 	keys := &KeyPair{}
 	copy(keys.secret[:], secret)

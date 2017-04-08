@@ -2,10 +2,11 @@ package fastd
 
 import (
 	"encoding/binary"
-	"github.com/digineo/fastd/ifconfig"
 	"net"
 	"strconv"
 	"syscall"
+
+	"github.com/digineo/fastd/ifconfig"
 )
 
 type Sockaddr struct {
@@ -47,11 +48,11 @@ func parseRawSockaddr(buf []byte) *Sockaddr {
 func parseSockaddr(buf []byte) Sockaddr {
 	if len(buf) != 18 {
 		return Sockaddr{}
-	} else {
-		return Sockaddr{
-			IP:   net.IP(buf[0:16]),
-			Port: binary.BigEndian.Uint16(buf[16:]),
-		}
+	}
+
+	return Sockaddr{
+		IP:   net.IP(buf[0:16]),
+		Port: binary.BigEndian.Uint16(buf[16:]),
 	}
 }
 

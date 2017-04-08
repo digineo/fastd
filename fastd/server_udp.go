@@ -84,17 +84,18 @@ func (srv *UDPServer) read(buf []byte, dst Sockaddr, src *net.UDPAddr) error {
 		return fmt.Errorf("packet too small (%d bytes)", len(buf))
 	}
 
-	if msg, err := ParseMessage(buf, false); err != nil {
+	msg, err := ParseMessage(buf, false)
+	if err != nil {
 		return err
-	} else {
-		msg.Dst = dst
-		msg.Src = Sockaddr{
-			IP:   src.IP,
-			Port: uint16(src.Port),
-		}
-		srv.recv <- msg
-		return nil
 	}
+
+	msg.Dst = dst
+	msg.Src = Sockaddr{
+		IP:   src.IP,
+		Port: uint16(src.Port),
+	}
+	srv.recv <- msg
+	return nil
 }
 
 // Find the corresponding

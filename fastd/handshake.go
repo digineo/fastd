@@ -4,10 +4,11 @@ import (
 	"bytes"
 	"encoding/binary"
 	"encoding/hex"
-	"github.com/digineo/fastd/ifconfig"
 	"log"
 	"reflect"
 	"time"
+
+	"github.com/digineo/fastd/ifconfig"
 )
 
 type handshake struct {
@@ -23,11 +24,11 @@ func newHandshake(serverKey *KeyPair, publicKey, peerHandshakeKey []byte) *hands
 		ourHandshakeKey:  RandomKeypair(),
 	}
 
-	if hs.makeSharedKey(serverKey, publicKey) {
-		return &hs
-	} else {
+	if !hs.makeSharedKey(serverKey, publicKey) {
 		return nil
 	}
+	
+	return &hs
 }
 
 func (srv *Server) handlePacket(msg *Message) (reply *Message) {

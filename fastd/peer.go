@@ -1,10 +1,11 @@
 package fastd
 
 import (
-	"github.com/digineo/fastd/ifconfig"
 	"log"
 	"net"
 	"time"
+
+	"github.com/digineo/fastd/ifconfig"
 )
 
 type AddressConfig struct {
@@ -28,6 +29,7 @@ type Peer struct {
 	Data interface{} // Some data that can be attached to the peer
 }
 
+// NewPeer initializes a new Peer struct
 func NewPeer(addr Sockaddr) *Peer {
 	return &Peer{
 		Remote:   addr,
@@ -35,7 +37,7 @@ func NewPeer(addr Sockaddr) *Peer {
 	}
 }
 
-// Returns all peers
+// GetPeers returns all peers
 func (srv *Server) GetPeers() []*Peer {
 	srv.peersMtx.RLock()
 	defer srv.peersMtx.RUnlock()
@@ -44,13 +46,13 @@ func (srv *Server) GetPeers() []*Peer {
 	peers := make([]*Peer, len(srv.peers))
 	for _, peer := range srv.peers {
 		peers[i] = peer
-		i += 1
+		i++
 	}
 
 	return peers
 }
 
-// Returns the peer and creates it if it does not exist yet
+// GetPeer returns the peer and creates it if it does not exist yet
 func (srv *Server) GetPeer(addr Sockaddr) (peer *Peer) {
 	key := string(addr.Raw())
 
@@ -90,11 +92,11 @@ func (srv *Server) verifyPeer(peer *Peer) error {
 
 // checks the handshake timeout
 func (srv *Server) establishPeer(peer *Peer) bool {
-	if hs := peer.handshake; hs == nil {
+	hs := peer.handshake
+	if hs == nil {
 		return false
-	} else {
-		return hs.timeout.After(time.Now())
 	}
+	return hs.timeout.After(time.Now())
 }
 
 // Removes (disconnects) a peer

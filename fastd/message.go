@@ -115,7 +115,7 @@ func ParseMessage(buf []byte, includeSockaddr bool) (*Message, error) {
 	return msg, nil
 }
 
-// Serialize message and optionally add the HMAC
+// Marshal serializes the message and optionally adds the HMAC
 func (msg *Message) Marshal(includeSockaddr bool) []byte {
 	bytes := make([]byte, 1500)
 	offset := 0

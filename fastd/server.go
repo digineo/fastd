@@ -2,10 +2,11 @@ package fastd
 
 import (
 	"fmt"
-	"github.com/digineo/fastd/ifconfig"
 	"log"
 	"sync"
 	"time"
+
+	"github.com/digineo/fastd/ifconfig"
 )
 
 type Server struct {
@@ -77,7 +78,7 @@ func NewServer(implName string, config *Config) (srv *Server, err error) {
 	return
 }
 
-// Stops all routines
+// Stop stopps all routines
 func (srv *Server) Stop() {
 	if srv.timeoutTicker != nil {
 		srv.stopTimeouter()

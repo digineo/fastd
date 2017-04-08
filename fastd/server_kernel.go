@@ -55,7 +55,7 @@ func NewKernelServer(addresses []Sockaddr) (ServerImpl, error) {
 		// tell the kernel module to bind to an address
 		if err = srv.ioctl(ioctl_BIND, address); err != nil {
 			srv.Close()
-			return nil, fmt.Errorf("bind() failed:", err)
+			return nil, fmt.Errorf("bind() failed: %s", err)
 		}
 
 		log.Printf("listening on %s, Port %d", address.IP.String(), address.Port)
@@ -160,12 +160,13 @@ func (srv *KernelServer) read(buf []byte) error {
 		return fmt.Errorf("packet too small (%d bytes)", len(buf))
 	}
 
-	if msg, err := ParseMessage(buf, true); err != nil {
+	msg, err := ParseMessage(buf, true)
+	if err != nil {
 		return fmt.Errorf("unmarshal failed: %v", err)
-	} else {
-		srv.recv <- msg
-		return nil
 	}
+
+	srv.recv <- msg
+	return nil
 }
 
 func (srv *KernelServer) Write(msg *Message) error {
