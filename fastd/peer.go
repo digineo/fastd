@@ -37,6 +37,13 @@ func NewPeer(addr Sockaddr) *Peer {
 	}
 }
 
+// PeersCount returns the number of known peers
+func (srv *Server) PeersCount() int {
+	srv.peersMtx.RLock()
+	defer srv.peersMtx.RUnlock()
+	return len(srv.peers)
+}
+
 // GetPeers returns all peers
 func (srv *Server) GetPeers() []*Peer {
 	srv.peersMtx.RLock()
