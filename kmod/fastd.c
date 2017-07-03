@@ -182,7 +182,7 @@ struct fastd_softc_head fastd_peers[FASTD_HASH_SIZE];
 static void		fastd_release(fastd_softc_t *);
 static int		fastd_bind_socket(fastd_sockaddr_t*);
 static int		fastd_close_socket(fastd_sockaddr_t*);
-static void		fastd_close_sockets();
+static void		fastd_close_sockets(void);
 static fastd_socket_t*	fastd_find_socket(const fastd_sockaddr_t*);
 static fastd_socket_t*	fastd_find_socket_locked(const fastd_sockaddr_t*);
 static int		fastd_send_packet(struct uio *uio);
