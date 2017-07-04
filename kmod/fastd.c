@@ -648,18 +648,16 @@ static void
 fastd_encap_header(fastd_softc_t *sc, struct mbuf *m, int ipoff, uint16_t srcport, uint16_t dstport)
 {
 	struct fastdudphdr *hdr;
-	struct udphdr *udph;
 	int len;
 
 	len = m->m_pkthdr.len - ipoff;
 	MPASS(len >= sizeof(struct fastdudphdr));
 	hdr = mtodo(m, ipoff);
 
-	udph = &hdr->fastd_udp;
-	udph->uh_sport = srcport;
-	udph->uh_dport = dstport;
-	udph->uh_ulen = htons(len);
-	udph->uh_sum = 0;
+	hdr->fastd_udp.uh_sport = srcport;
+	hdr->fastd_udp.uh_dport = dstport;
+	hdr->fastd_udp.uh_ulen = htons(len);
+	hdr->fastd_udp.uh_sum = 0;
 
 	// Set fastd packet type to data
 	hdr->type = FASTD_HDR_DATA;
