@@ -87,14 +87,18 @@ func (srv *Server) addPeer(in *Peer) {
 
 // Calls the OnVerify hook (if exists) and sets the handshake timeout
 func (srv *Server) verifyPeer(peer *Peer) error {
-	if srv.config.OnVerify == nil {
-		return nil
+	// Call OnVerify hook
+	if f := srv.config.OnVerify; f != nil {
+		if err := f(peer); err != nil {
+			return err
+		}
 	}
-	err := srv.config.OnVerify(peer)
-	if hs := peer.handshake; err == nil && hs != nil {
+
+	// Set the handshake timeout
+	if hs := peer.handshake; hs != nil {
 		hs.timeout = time.Now().Add(time.Second * 3)
 	}
-	return err
+	return nil
 }
 
 // checks the handshake timeout
