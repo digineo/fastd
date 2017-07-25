@@ -7,6 +7,7 @@ import (
 	"sync"
 )
 
+// UDPServer is a userspace stub of the fastd server
 type UDPServer struct {
 	connections []UDPConn
 	recv        chan *Message // Received messages
@@ -18,6 +19,7 @@ type UDPConn struct {
 	conn *net.UDPConn
 }
 
+// NewUDPServer creates a new UDP based server
 func NewUDPServer(addresses []Sockaddr) (ServerImpl, error) {
 
 	srv := &UDPServer{

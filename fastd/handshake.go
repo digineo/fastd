@@ -27,7 +27,7 @@ func newHandshake(serverKey *KeyPair, publicKey, peerHandshakeKey []byte) *hands
 	if !hs.makeSharedKey(serverKey, publicKey) {
 		return nil
 	}
-	
+
 	return &hs
 }
 

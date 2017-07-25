@@ -6,6 +6,7 @@ import (
 	"time"
 )
 
+// Config is the configuration of a fastd server instance
 type Config struct {
 	Bind            []Sockaddr
 	serverKeys      *KeyPair
@@ -16,7 +17,7 @@ type Config struct {
 	OnTimeout       func(*Peer)
 }
 
-// Set the server's key
+// SetServerKey sets the server's key
 func (c *Config) SetServerKey(secretHex string) error {
 	secret, err := hex.DecodeString(secretHex)
 	if err != nil {

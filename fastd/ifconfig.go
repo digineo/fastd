@@ -6,11 +6,13 @@ package fastd
 import "C"
 
 import (
-	"github.com/digineo/fastd/ifconfig"
 	"net"
 	"unsafe"
+
+	"github.com/digineo/fastd/ifconfig"
 )
 
+// IfaceStats are counters for incoming and outgoing packets
 type IfaceStats struct {
 	ipackets uint64
 	opackets uint64
@@ -21,21 +23,22 @@ type ifconfigParam struct {
 	remote [18]byte
 }
 
+// SetAddrPTP sets the local and remote Point-To-Point addresses
 func SetAddrPTP(ifname string, addr, dstaddr net.IP) (err error) {
 	return ifconfig.SetAddrPTP(ifname, addr, dstaddr)
 }
 
 const (
-	FASTD_PARAM_GET_REMOTE = iota
-	FASTD_PARAM_SET_REMOTE
-	FASTD_PARAM_GET_STATS
+	paramGetRemote = iota
+	paramSetRemote
+	paramGetStats
 )
 
-// Get remote address and pubkey
+// GetRemote returns the remote address and pubkey
 func GetRemote(ifname string) (remote Sockaddr, pubkey []byte, err error) {
 	param := &ifconfigParam{}
 
-	ifconfig.GetDrvSpec(ifname, FASTD_PARAM_GET_REMOTE, unsafe.Pointer(param), unsafe.Sizeof(*param))
+	ifconfig.GetDrvSpec(ifname, paramGetRemote, unsafe.Pointer(param), unsafe.Sizeof(*param))
 
 	if err == nil {
 		pubkey = param.pubkey[:]
@@ -45,27 +48,28 @@ func GetRemote(ifname string) (remote Sockaddr, pubkey []byte, err error) {
 	return
 }
 
+// Clone creates a new fastd interface
 func Clone(remote Sockaddr, pubkey []byte) (string, error) {
 	param := &ifconfigParam{remote: remote.RawFixed()}
 	copy(param.pubkey[:], pubkey)
 	return ifconfig.Clone("fastd", unsafe.Pointer(param))
 }
 
-// Set remote address and pubkey
+// SetRemote sets the remote address and pubkey
 func SetRemote(ifname string, remote Sockaddr, pubkey []byte) error {
 	param := &ifconfigParam{
 		remote: remote.RawFixed(),
 	}
 	copy(param.pubkey[:], pubkey)
 
-	return ifconfig.SetDrvSpec(ifname, FASTD_PARAM_SET_REMOTE, unsafe.Pointer(param), unsafe.Sizeof(*param))
+	return ifconfig.SetDrvSpec(ifname, paramSetRemote, unsafe.Pointer(param), unsafe.Sizeof(*param))
 }
 
-// Get interface counter
+// GetStats returns the interface counters
 func GetStats(ifname string) (*IfaceStats, error) {
 	param := &IfaceStats{}
 
-	err := ifconfig.GetDrvSpec(ifname, FASTD_PARAM_GET_STATS, unsafe.Pointer(param), unsafe.Sizeof(*param))
+	err := ifconfig.GetDrvSpec(ifname, paramGetStats, unsafe.Pointer(param), unsafe.Sizeof(*param))
 
 	return param, err
 }

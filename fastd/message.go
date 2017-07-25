@@ -47,8 +47,10 @@ const (
 	REPLY_UNACCEPTABLE_VALUE
 )
 
+// Records is an array of all possible records for a handshake packet
 type Records [RECORD_MAX][]byte
 
+// Message is a fastd handshake message
 type Message struct {
 	Src     Sockaddr
 	Dst     Sockaddr
@@ -58,19 +60,20 @@ type Message struct {
 	raw     []byte
 }
 
-// Creates a reply to the message
+// NewReply creates a reply to the message
 func (msg *Message) NewReply() *Message {
-	reply := &Message{}
-	reply.Type = 0x01
-	reply.Src = msg.Dst
-	reply.Dst = msg.Src
+	reply := &Message{
+		Type: 0x01,
+		Src:  msg.Dst,
+		Dst:  msg.Src,
+	}
 	reply.Records[RECORD_HANDSHAKE_TYPE] = []byte{msg.Records[RECORD_HANDSHAKE_TYPE][0] + 1}
 	reply.Records[RECORD_MODE] = msg.Records[RECORD_MODE]
 	reply.Records[RECORD_PROTOCOL_NAME] = msg.Records[RECORD_PROTOCOL_NAME]
 	return reply
 }
 
-// Set error fields
+// SetError sets the error fields
 func (msg *Message) SetError(replyCode byte, errorDetail TLV_KEY) {
 	msg.Records[RECORD_REPLY_CODE] = []byte{replyCode}
 
@@ -79,7 +82,7 @@ func (msg *Message) SetError(replyCode byte, errorDetail TLV_KEY) {
 	msg.Records[RECORD_ERROR_DETAIL] = value
 }
 
-// Calculate HMAC and verify it
+// VerifySignature calculates the HMAC and verifies it
 func (msg *Message) VerifySignature() bool {
 	if msg.SignKey == nil {
 		return false
@@ -91,6 +94,7 @@ func (msg *Message) VerifySignature() bool {
 	return bytes.Equal(mac.Sum(nil), msg.Records[RECORD_TLV_MAC])
 }
 
+// ParseMessage parses the message bytes
 func ParseMessage(buf []byte, includeSockaddr bool) (*Message, error) {
 	msg := &Message{}
 	offset := 0
@@ -164,7 +168,7 @@ func (msg *Message) MarshalPayload(out []byte) int {
 	return i
 }
 
-// Decodes the packet
+// Unmarshal decodes the packet
 // It will zero the HMAC bytes in the given slice
 func (msg *Message) Unmarshal(data []byte) (err error) {
 	msg.Type = data[0]
@@ -224,7 +228,7 @@ func (msg *Message) Unmarshal(data []byte) (err error) {
 	return
 }
 
-// String representation of the records
+// String returns a textual representation of the records
 func (records Records) String() string {
 	var buffer bytes.Buffer
 

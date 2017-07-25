@@ -11,6 +11,7 @@ var (
 	ioctl_CLOSE = _IOW('F', 3, 18)
 )
 
+// Ioctl executes a IOCTL syscall
 func Ioctl(fd, cmd, ptr uintptr) error {
 	_, _, e := syscall.Syscall(syscall.SYS_IOCTL, fd, cmd, ptr)
 	if e != 0 {

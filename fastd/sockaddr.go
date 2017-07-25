@@ -75,13 +75,12 @@ func (addr *Sockaddr) Equal(other *Sockaddr) bool {
 	return addr.Port == other.Port && addr.IP.Equal(other.IP)
 }
 
-// Returns the address family
+// Family returns the address family
 func (addr *Sockaddr) Family() int {
 	if ifconfig.IsIPv4(addr.IP) {
 		return syscall.AF_INET
-	} else {
-		return syscall.AF_INET6
 	}
+		return syscall.AF_INET6
 }
 
 func (addr *Sockaddr) String() string {

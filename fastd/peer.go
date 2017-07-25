@@ -8,11 +8,13 @@ import (
 	"github.com/digineo/fastd/ifconfig"
 )
 
+// AddressConfig contains the local and remote PTP address
 type AddressConfig struct {
 	LocalAddr net.IP // local PTP address
 	DestAddr  net.IP // remote PTP address
 }
 
+// Peer is a fastd peer
 type Peer struct {
 	Remote    Sockaddr
 	PublicKey []byte
