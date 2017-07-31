@@ -163,14 +163,16 @@ func (srv *Server) handlePacket(msg *Message) (reply *Message) {
 
 		// Decode and set MTU
 		if val := records[RECORD_MTU]; len(val) == 0 {
-			log.Printf("%v mtu missing", msg.Src)
+			log.Printf("%v MTU missing", msg.Src)
 		} else if len(val) != 2 {
-			log.Printf("%v mtu invalid: %v", msg.Src, val)
+			log.Printf("%v MTU invalid: %v", msg.Src, val)
 		} else {
-			if mtu := binary.BigEndian.Uint16(val); mtu < 576 {
-				log.Printf("%v mtu invalid: %d", msg.Src, mtu)
+			if mtu := binary.LittleEndian.Uint16(val); mtu < 576 {
+				log.Printf("%v MTU invalid: %d", msg.Src, mtu)
 			} else {
-				ifconfig.SetMTU(peer.Ifname, mtu)
+				if err := ifconfig.SetMTU(peer.Ifname, mtu); err != nil {
+					log.Printf("%v unable to set MTU to %d: %s", msg.Src, mtu, err)
+				}
 			}
 		}
 
