@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"encoding/hex"
+	"fmt"
 	"log"
 	"reflect"
 	"time"
@@ -155,7 +156,8 @@ func (srv *Server) handlePacket(msg *Message) (reply *Message) {
 		}
 	case 3:
 		msg.SignKey = hs.sharedKey
-		if !srv.handleFinishHandshake(msg, reply, peer) {
+		if err := srv.handleFinishHandshake(msg, reply, peer); err != nil {
+			log.Printf("%v handshake failed: %s", msg.Src, err)
 			return nil
 		}
 
@@ -179,27 +181,24 @@ func (srv *Server) handlePacket(msg *Message) (reply *Message) {
 	return
 }
 
-func (srv *Server) handleFinishHandshake(msg *Message, reply *Message, peer *Peer) bool {
+func (srv *Server) handleFinishHandshake(msg *Message, reply *Message, peer *Peer) error {
 	methodName := msg.Records[RECORD_METHOD_NAME]
 
 	if methodName == nil {
-		log.Println("method name missing")
 		reply.SetError(REPLY_RECORD_MISSING, RECORD_METHOD_NAME)
-		return true
+		return fmt.Errorf("method name missing")
 	}
 	if string(methodName) != "null" {
-		log.Println("method name invalid:", methodName)
 		reply.SetError(REPLY_UNACCEPTABLE_VALUE, RECORD_METHOD_NAME)
-		return true
+		return fmt.Errorf("method name invalid: %s", methodName)
 	}
 
 	if !msg.VerifySignature() {
-		log.Println("invalid signature")
-		return false
+		return fmt.Errorf("invalid signature")
 	}
 
 	if !srv.establishPeer(peer) {
-		return false
+		return fmt.Errorf("handshake timed out")
 	}
 
 	// Clear handshake keys
@@ -212,5 +211,5 @@ func (srv *Server) handleFinishHandshake(msg *Message, reply *Message, peer *Pee
 		f(peer)
 	}
 
-	return false
+	return nil
 }
