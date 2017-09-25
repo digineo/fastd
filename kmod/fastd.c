@@ -740,7 +740,7 @@ fastd_encap6(fastd_softc_t *sc, const fastd_sockaddr_t *dst, struct mbuf *m)
 	ip6->ip6_vfc  = IPV6_VERSION;
 	ip6->ip6_plen = 0;
 	ip6->ip6_nxt  = IPPROTO_UDP;
-	ip6->ip6_hlim = IPDEFTTL;
+	ip6->ip6_hlim = IPV6_DEFHLIM;
 	ip6->ip6_src  = *srcaddr;
 	ip6->ip6_dst  = *dstaddr;
 
