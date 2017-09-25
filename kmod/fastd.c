@@ -873,7 +873,7 @@ fastd_recv_data(struct mbuf *m, u_int offset, u_int datalen, fastd_softc_t *sc)
 		return;
 	}
 
-	IFP_DEBUG(sc->ifp, "data reveived");
+	IFP_DEBUG(sc->ifp, "data received");
 
 	// Get the IP version number
 	u_int8_t tp;
