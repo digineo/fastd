@@ -39,7 +39,7 @@ func (srv *Server) timeoutPeers() {
 
 	for _, peer := range srv.peers {
 		if peer.hasTimeout(now, srv.config.Timeout) {
-			log.Println(peer.Ifname, "timed out")
+			log.Printf("%v timed out ifname=%s", peer.Remote, peer.Ifname)
 			srv.removePeerLocked(peer)
 
 			if f := srv.config.OnTimeout; f != nil {

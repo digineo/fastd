@@ -40,7 +40,7 @@ func NewServer(implName string, config *Config) (srv *Server, err error) {
 
 	impl := implementations[implName]
 	if impl == nil {
-		err = fmt.Errorf("unknown implementation: %s", impl)
+		err = fmt.Errorf("unknown implementation: %v", impl)
 		return
 	}
 
