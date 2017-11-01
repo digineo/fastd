@@ -106,15 +106,21 @@ func Destroy(name string) error {
 }
 
 func SetAddr(ifname string, addr net.IP, prefixlen uint8) (err error) {
+	var res C.int
 	name := C.CString(ifname)
 	defer C.free(unsafe.Pointer(name))
 
 	if IsIPv4(addr) {
-		return syscall.EAFNOSUPPORT
+		addr_sa := (*C.struct_sockaddr_in)(unsafe.Pointer(Sockaddr(addr)))
+		netmask := net.IP(net.CIDRMask(int(prefixlen), 32))
+		netmask_sa := (*C.struct_sockaddr_in)(unsafe.Pointer(Sockaddr(netmask)))
+		res = C.set_addr4(name, addr_sa, netmask_sa)
+	} else {
+		addr_sa := (*C.struct_sockaddr_in6)(unsafe.Pointer(Sockaddr(addr)))
+		res = C.add_addr6(name, addr_sa, C.uint8_t(prefixlen))
 	}
 
-	addr_sa := (*C.struct_sockaddr_in6)(unsafe.Pointer(Sockaddr(addr)))
-	return retval(C.add_addr6(name, addr_sa, C.uint8_t(prefixlen)))
+	return retval(res)
 }
 
 func RemoveAddr4(ifname string) (err error) {

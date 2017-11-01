@@ -157,6 +157,18 @@ remove_addr6(char* ifname, struct sockaddr_in6 *addr)
 
 	return ioctl(ioctl_fd6, SIOCDIFADDR_IN6, &req);
 }
+int
+set_addr4(char* ifname, struct sockaddr_in *addr, struct sockaddr_in *netmask)
+{
+	struct ifaliasreq req;
+	bzero(&req, sizeof(req));
+
+	strlcpy(req.ifra_name, ifname,  sizeof(req.ifra_name));
+	memcpy(&req.ifra_addr, addr,    sizeof(struct sockaddr_in));
+	memcpy(&req.ifra_mask, netmask, sizeof(struct sockaddr_in));
+
+	return ioctl(ioctl_fd4, SIOCAIFADDR, &req);
+}
 
 int
 add_addr4_ptp(char* ifname, struct sockaddr_in *addr, struct sockaddr_in *dstaddr)

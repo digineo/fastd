@@ -17,6 +17,7 @@ int get_mtu(char*, int*);
 int set_mtu(char*, int);
 int remove_addr4(char*);
 int remove_addr6(char*, struct sockaddr_in6*);
+int set_addr4(char*, struct sockaddr_in*, struct sockaddr_in*);
 int add_addr4_ptp(char*, struct sockaddr_in*, struct sockaddr_in*);
 int add_addr6_ptp(char*, struct sockaddr_in6*, struct sockaddr_in6*);
 int add_addr6(char*, struct sockaddr_in6*, uint8_t);
