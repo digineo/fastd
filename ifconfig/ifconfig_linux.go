@@ -48,3 +48,7 @@ func SetAddrPTP(ifname string, addr, dstaddr net.IP) (err error) {
 func SetAddr(ifname string, addr net.IP, prefixlen uint8) (err error) {
 	return notImplemented
 }
+
+func RemoveAddr4(ifname string) (err error) {
+	return notImplemented
+}

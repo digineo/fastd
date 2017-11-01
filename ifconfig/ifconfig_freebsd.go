@@ -117,6 +117,13 @@ func SetAddr(ifname string, addr net.IP, prefixlen uint8) (err error) {
 	return retval(C.add_addr6(name, addr_sa, C.uint8_t(prefixlen)))
 }
 
+func RemoveAddr4(ifname string) (err error) {
+	name := C.CString(ifname)
+	defer C.free(unsafe.Pointer(name))
+
+	return retval(C.remove_addr4(name))
+}
+
 func SetAddrPTP(ifname string, addr, dstaddr net.IP) (err error) {
 	var res C.int
 	name := C.CString(ifname)
