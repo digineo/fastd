@@ -9,27 +9,14 @@ import (
 	"strings"
 	"syscall"
 	"unsafe"
+
+	"golang.org/x/sys/unix"
 )
 
 const (
+	// DevicePath is the path to the fastd kernel device
 	DevicePath = "/dev/fastd"
-
-	// Requestable events
-	POLLIN  = 0x0001
-	POLLPRI = 0x0002
-	POLLOUT = 0x0004
-
-	// These events are set if they occur regardless of whether they were requested.
-	POLLERR  = 0x0008
-	POLLHUP  = 0x0010
-	POLLNVAL = 0x0020
 )
-
-type PollFd struct {
-	fd      int32
-	events  int16
-	revents int16
-}
 
 type KernelServer struct {
 	dev       *os.File      // Interface to kernel
@@ -116,10 +103,10 @@ func (srv *KernelServer) Peers() (peers []*Peer) {
 func (srv *KernelServer) readPackets() error {
 	buf := make([]byte, 1500)
 
-	pollFd := PollFd{
-		fd:     int32(srv.dev.Fd()),
-		events: POLLIN | POLLERR | POLLHUP,
-	}
+	pollFds := []unix.PollFd{{
+		Fd:     int32(srv.dev.Fd()),
+		Events: unix.POLLIN | unix.POLLERR | unix.POLLHUP,
+	}}
 
 	for {
 		n, err := srv.dev.Read(buf)
@@ -132,18 +119,18 @@ func (srv *KernelServer) readPackets() error {
 				log.Println(err)
 			}
 		case io.EOF:
-			num, _, errno := syscall.Syscall(syscall.SYS_POLL, uintptr(unsafe.Pointer(&pollFd)), uintptr(1), 60*1000)
+			num, err := unix.Poll(pollFds, 60*1000)
 
 			// Error and not interrupted system call ?
-			if errno != 0 && errno != syscall.EINTR {
-				return fmt.Errorf("syscall.SYS_POLL failed: %d", errno)
+			if err != nil && err != syscall.EINTR {
+				return fmt.Errorf("syscall.SYS_POLL failed: %s", err)
 			}
 
 			if num < 0 {
 				return fmt.Errorf("poll failed: %d", num)
 			}
 
-			if num > 0 && pollFd.revents&POLLHUP > 0 {
+			if num > 0 && pollFds[0].Revents&unix.POLLHUP != 0 {
 				// disconnected
 				return fmt.Errorf("device closed")
 			}
