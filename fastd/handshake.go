@@ -160,22 +160,6 @@ func (srv *Server) handlePacket(msg *Message) (reply *Message) {
 			log.Printf("%v handshake failed: %s", msg.Src, err)
 			return nil
 		}
-
-		// Decode and set MTU
-		if val := records[RECORD_MTU]; len(val) == 0 {
-			log.Printf("%v MTU missing", msg.Src)
-		} else if len(val) != 2 {
-			log.Printf("%v MTU invalid: %v", msg.Src, val)
-		} else {
-			if mtu := binary.LittleEndian.Uint16(val); mtu < 576 {
-				log.Printf("%v MTU invalid: %d", msg.Src, mtu)
-			} else {
-				if err := ifconfig.SetMTU(peer.Ifname, mtu); err != nil {
-					log.Printf("%v unable to set MTU to %d: %s", msg.Src, mtu, err)
-				}
-			}
-		}
-
 	default:
 		log.Printf("%v unsupported handshake type", msg.Src)
 	}
@@ -185,6 +169,7 @@ func (srv *Server) handlePacket(msg *Message) (reply *Message) {
 
 func (srv *Server) handleFinishHandshake(msg *Message, reply *Message, peer *Peer) error {
 	methodName := msg.Records[RECORD_METHOD_NAME]
+	var mtu uint16
 
 	if methodName == nil {
 		reply.SetError(REPLY_RECORD_MISSING, RECORD_METHOD_NAME)
@@ -201,6 +186,24 @@ func (srv *Server) handleFinishHandshake(msg *Message, reply *Message, peer *Pee
 
 	if !srv.establishPeer(peer) {
 		return fmt.Errorf("handshake timed out")
+	}
+
+	// Decode and set MTU
+	if val := msg.Records[RECORD_MTU]; len(val) == 0 {
+		return fmt.Errorf("%v MTU missing", msg.Src)
+	} else if len(val) != 2 {
+		return fmt.Errorf("%v MTU invalid: %v", msg.Src, val)
+	} else {
+		mtu = binary.LittleEndian.Uint16(val)
+		if mtu < 576 {
+			return fmt.Errorf("%v MTU invalid: %d", msg.Src, mtu)
+		}
+
+		if err := ifconfig.SetMTU(peer.Ifname, mtu); err != nil {
+			log.Printf("%v unable to set MTU to %d: %s", msg.Src, mtu, err)
+		} else {
+			peer.MTU = mtu
+		}
 	}
 
 	// Clear handshake keys
