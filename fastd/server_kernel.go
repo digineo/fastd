@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 	"syscall"
+	"time"
 	"unsafe"
 
 	"golang.org/x/sys/unix"
@@ -22,6 +23,7 @@ type KernelServer struct {
 	dev       *os.File      // Interface to kernel
 	recv      chan *Message // Received messages
 	addresses []Sockaddr
+	cancel    chan struct{}
 }
 
 func NewKernelServer(addresses []Sockaddr) (ServerImpl, error) {
@@ -31,8 +33,9 @@ func NewKernelServer(addresses []Sockaddr) (ServerImpl, error) {
 	}
 
 	srv := &KernelServer{
-		dev:  dev,
-		recv: make(chan *Message, 10),
+		dev:    dev,
+		recv:   make(chan *Message, 10),
+		cancel: make(chan struct{}),
 	}
 
 	for _, address := range addresses {
@@ -50,9 +53,17 @@ func NewKernelServer(addresses []Sockaddr) (ServerImpl, error) {
 	}
 
 	go func() {
-		err := srv.readPackets()
-		if err != nil {
+		for {
+			err := srv.readPackets()
 			log.Println("readPackets failed:", err)
+			if err != nil {
+				select {
+				case <-srv.cancel:
+					return
+				case <-time.After(time.Second):
+					// just waiting
+				}
+			}
 		}
 	}()
 
@@ -69,6 +80,7 @@ func (srv *KernelServer) Read() chan *Message {
 }
 
 func (srv *KernelServer) Close() {
+	close(srv.cancel)
 	if srv.dev != nil {
 		srv.dev.Close()
 	}
