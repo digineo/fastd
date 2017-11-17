@@ -133,15 +133,17 @@ func (srv *KernelServer) readPackets() error {
 		case io.EOF:
 			num, e := unix.Poll(pollFds, 60*1000)
 
-			// Error and not interrupted system call ?
-			if e != nil && e != syscall.EINTR {
-				return fmt.Errorf("syscall.SYS_POLL failed: %s", err)
+			if e != nil {
+				// Temp error, like interrupted system call (EINTR)?
+				if errno, ok := e.(syscall.Errno); ok && errno.Temporary() {
+					continue
+				}
+
+				// other error
+				return fmt.Errorf("poll failed: %s", e)
 			}
 
-			if num < 0 {
-				return fmt.Errorf("poll failed: %d (errno: %v)", num, e)
-			}
-
+			// num == 0 means timeout, can be ignored here
 			if num > 0 && pollFds[0].Revents&unix.POLLHUP != 0 {
 				// disconnected
 				return fmt.Errorf("device closed")
