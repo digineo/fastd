@@ -119,15 +119,15 @@ func (srv *KernelServer) readPackets() error {
 				log.Println(err)
 			}
 		case io.EOF:
-			num, err := unix.Poll(pollFds, 60*1000)
+			num, e := unix.Poll(pollFds, 60*1000)
 
 			// Error and not interrupted system call ?
-			if err != nil && err != syscall.EINTR {
+			if e != nil && e != syscall.EINTR {
 				return fmt.Errorf("syscall.SYS_POLL failed: %s", err)
 			}
 
 			if num < 0 {
-				return fmt.Errorf("poll failed: %d", num)
+				return fmt.Errorf("poll failed: %d (errno: %v)", num, e)
 			}
 
 			if num > 0 && pollFds[0].Revents&unix.POLLHUP != 0 {
