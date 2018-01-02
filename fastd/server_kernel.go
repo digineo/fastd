@@ -11,6 +11,7 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/pkg/errors"
 	"golang.org/x/sys/unix"
 )
 
@@ -45,7 +46,7 @@ func NewKernelServer(addresses []Sockaddr) (ServerImpl, error) {
 		// tell the kernel module to bind to an address
 		if err = srv.ioctl(ioctl_BIND, address); err != nil {
 			srv.Close()
-			return nil, fmt.Errorf("bind() failed: %s", err)
+			return nil, errors.Wrapf(err, "binding to %v failed", address)
 		}
 
 		log.Printf("listening on %s, Port %d", address.IP.String(), address.Port)
@@ -55,7 +56,7 @@ func NewKernelServer(addresses []Sockaddr) (ServerImpl, error) {
 	go func() {
 		for {
 			err := srv.readPackets()
-			log.Println("readPackets failed:", err)
+			errors.Wrap(err, "readPackets failed")
 			if err != nil {
 				select {
 				case <-srv.cancel:
@@ -140,7 +141,7 @@ func (srv *KernelServer) readPackets() error {
 				}
 
 				// other error
-				return fmt.Errorf("poll failed: %s", e)
+				return errors.Wrap(e, "poll failed")
 			}
 
 			// num == 0 means timeout, can be ignored here
@@ -163,7 +164,7 @@ func (srv *KernelServer) read(buf []byte) error {
 
 	msg, err := ParseMessage(buf, true)
 	if err != nil {
-		return fmt.Errorf("unmarshal failed: %v", err)
+		return errors.Wrap(err, "unmarshal failed")
 	}
 
 	srv.recv <- msg

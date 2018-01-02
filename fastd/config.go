@@ -4,6 +4,8 @@ import (
 	"encoding/hex"
 	"fmt"
 	"time"
+
+	"github.com/pkg/errors"
 )
 
 // Config is the configuration of a fastd server instance
@@ -21,7 +23,7 @@ type Config struct {
 func (c *Config) SetServerKey(secretHex string) error {
 	secret, err := hex.DecodeString(secretHex)
 	if err != nil {
-		return fmt.Errorf("unable to decode secret: %s", err)
+		return errors.Wrap(err, "unable to decode secret")
 	}
 	if len(secret) != KEYSIZE {
 		return fmt.Errorf("wrong secret size: expected=%d actual=%d", KEYSIZE, len(secret))

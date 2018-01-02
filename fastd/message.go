@@ -6,6 +6,8 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"fmt"
+
+	"github.com/pkg/errors"
 )
 
 type TLV_KEY uint16
@@ -113,7 +115,7 @@ func ParseMessage(buf []byte, includeSockaddr bool) (*Message, error) {
 	msg.raw = buf[offset:]
 
 	if err := msg.Unmarshal(msg.raw); err != nil {
-		return nil, fmt.Errorf("unmarshal failed: %v", err)
+		return nil, errors.Wrap(err, "unmarshal failed")
 	}
 
 	return msg, nil
