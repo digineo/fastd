@@ -6,6 +6,8 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"fmt"
+	"net"
+	"strings"
 
 	"github.com/pkg/errors"
 )
@@ -236,7 +238,59 @@ func (records Records) String() string {
 
 	buffer.WriteString("Records[ ")
 	for key, val := range records {
-		buffer.WriteString(fmt.Sprintf("%#04x=%x ", key, val))
+		if len(val) == 0 {
+			continue
+		}
+		switch TLV_KEY(key) {
+		case RECORD_HANDSHAKE_TYPE:
+			buffer.WriteString(fmt.Sprintf("handshake_type=%x ", val))
+		case RECORD_REPLY_CODE:
+			buffer.WriteString(fmt.Sprintf("reply_code=%x ", val))
+		case RECORD_ERROR_DETAIL:
+			buffer.WriteString(fmt.Sprintf("error_detail=%x ", val))
+		case RECORD_FLAGS:
+			buffer.WriteString(fmt.Sprintf("flags=%x ", val))
+		case RECORD_MODE:
+			buffer.WriteString(fmt.Sprintf("mode=%x ", val))
+		case RECORD_PROTOCOL_NAME:
+			buffer.WriteString(fmt.Sprintf("protocol_name=%s ", string(val)))
+		case RECORD_SENDER_KEY:
+			buffer.WriteString(fmt.Sprintf("sender_key=%x ", val))
+		case RECORD_RECIPIENT_KEY:
+			buffer.WriteString(fmt.Sprintf("recipient_key=%x ", val))
+		case RECORD_SENDER_HANDSHAKE_KEY:
+			buffer.WriteString(fmt.Sprintf("sender_handshake_key=%x ", val))
+		case RECORD_RECIPIENT_HANDSHAKE_KEY:
+			buffer.WriteString(fmt.Sprintf("recipient_handshake_key=%x ", val))
+		case RECORD_AUTHENTICATION_TAG:
+			buffer.WriteString(fmt.Sprintf("authentication_tag=%x ", val))
+		case RECORD_MTU:
+			buffer.WriteString(fmt.Sprintf("mtu=%d ", val))
+		case RECORD_METHOD_NAME:
+			buffer.WriteString(fmt.Sprintf("method_name=%s ", val))
+		case RECORD_VERSION_NAME:
+			buffer.WriteString(fmt.Sprintf("version_name=%s ", val))
+		case RECORD_METHOD_LIST:
+			buffer.WriteString(fmt.Sprintf("method_list=%v ", strings.Split(string(val), "\x00")))
+		case RECORD_TLV_MAC:
+			buffer.WriteString(fmt.Sprintf("tlv_mac=%x ", val))
+		case RECORD_IPV4_ADDR:
+			buffer.WriteString(fmt.Sprintf("ipv4_addr=%v ", net.IP(val)))
+		case RECORD_IPV4_DSTADDR:
+			buffer.WriteString(fmt.Sprintf("ipv4_dstaddr=%v ", net.IP(val)))
+		case RECORD_IPV4_PREFIXLEN:
+			buffer.WriteString(fmt.Sprintf("ipv4_prefixlen=%d ", val))
+		case RECORD_IPV6_ADDR:
+			buffer.WriteString(fmt.Sprintf("ipv6_addr=%v ", net.IP(val)))
+		case RECORD_IPV6_DSTADDR:
+			buffer.WriteString(fmt.Sprintf("ipv6_dstaddr=%v ", net.IP(val)))
+		case RECORD_IPV6_PREFIXLEN:
+			buffer.WriteString(fmt.Sprintf("ipv6_prefixlen=%d ", val))
+		case RECORD_VARS:
+			buffer.WriteString(fmt.Sprintf("vars=%x ", val))
+		case RECORD_HOSTNAME:
+			buffer.WriteString(fmt.Sprintf("hostname=%s ", val))
+		}
 	}
 	buffer.WriteString("]")
 
