@@ -65,17 +65,25 @@ func main() {
 		log.Fatalf("unable to decode peer key: %v", err)
 	}
 
-	msg := fastd.Message{Type: 0x01}
 	hsKey := fastd.RandomKeypair()
 
-	msg.Records[fastd.RECORD_HANDSHAKE_TYPE] = []byte{0x01}
-	msg.Records[fastd.RECORD_MODE] = []byte{0x01}
-	msg.Records[fastd.RECORD_PROTOCOL_NAME] = []byte("ec25519-fhmqvc")
-	msg.Records[fastd.RECORD_SENDER_KEY] = keyPair.Public()
-	msg.Records[fastd.RECORD_RECIPIENT_KEY] = peerKey
-	msg.Records[fastd.RECORD_SENDER_HANDSHAKE_KEY] = hsKey.Public()
+	// create handshake request 0x01
+	request := fastd.Message{Type: 0x01}
+	request.Records[fastd.RECORD_HANDSHAKE_TYPE] = []byte{0x01}
+	request.Records[fastd.RECORD_MODE] = []byte{0x01}
+	request.Records[fastd.RECORD_PROTOCOL_NAME] = []byte("ec25519-fhmqvc")
+	request.Records[fastd.RECORD_SENDER_KEY] = keyPair.Public()
+	request.Records[fastd.RECORD_VERSION_NAME] = []byte("v18")
+	request.Records[fastd.RECORD_RECIPIENT_KEY] = peerKey
+	request.Records[fastd.RECORD_SENDER_HANDSHAKE_KEY] = hsKey.Public()
 
-	pkt := msg.Marshal(false)
+	if hostname, _ := os.Hostname(); hostname != "" {
+		request.Records[fastd.RECORD_HOSTNAME] = []byte(hostname)
+	}
+
+	log.Println("Sending:", request.Records)
+
+	pkt := request.Marshal(false)
 
 	n, err := conn.Write(pkt)
 	if err != nil {
@@ -85,31 +93,8 @@ func main() {
 		log.Fatalf("expected to have written %d bytes, wrote %d", len(pkt), n)
 	}
 
-	conn.SetReadDeadline(time.Now().Add(readTimeout))
-	var data bytes.Buffer
-	var reply *fastd.Message
-	for {
-		buf := make([]byte, 1500)
-		n, _, err = conn.ReadFromUDP(buf)
-		log.Printf("got %d bytes", n)
-		if err != nil {
-			if e, ok := err.(net.Error); !ok || !e.Timeout() {
-				log.Fatalf("error reading from UDP socket: %v", err)
-			}
-			log.Fatal("reached timeout")
-		}
-
-		if n != 0 {
-			data.Write(buf[:n])
-		}
-
-		reply, err = fastd.ParseMessage(data.Bytes(), false)
-		if err != nil {
-			log.Printf("not enough bytes to construct reply messages")
-		} else {
-			break
-		}
-	}
+	reply := waitForPacket(conn)
+	log.Println("Received:", reply.Records)
 
 	if rec := reply.Records[fastd.RECORD_HANDSHAKE_TYPE]; len(rec) != 1 || rec[0] != 0x02 {
 		log.Fatalf("expected finish handshake packet, received %v", rec)
@@ -118,12 +103,18 @@ func main() {
 		log.Fatalf("expected finish reply type, received %v", rec)
 	}
 
+	recipientHSKey := reply.Records[fastd.RECORD_RECIPIENT_HANDSHAKE_KEY]
+	if bytes.Compare(hsKey.Public(), recipientHSKey) != 0 {
+		log.Fatalf("recipient handshake key mismatch")
+	}
+
 	senderHSKey := reply.Records[fastd.RECORD_SENDER_HANDSHAKE_KEY]
 	if len(senderHSKey) != fastd.KEYSIZE {
 		log.Fatalf("invalid sender handshake key size: %d", len(senderHSKey))
 	}
 
-	hs := fastd.NewHandshake(keyPair, hsKey, peerKey, senderHSKey)
+	hs := fastd.NewInitiatingHandshake(keyPair, hsKey, peerKey, senderHSKey)
+
 	reply.SignKey = hs.SharedKey()
 
 	if !reply.VerifySignature() {
@@ -131,14 +122,40 @@ func main() {
 	}
 
 	// create handshake finish 0x03
-
 	finish := reply.NewReply()
 	finish.Records[fastd.RECORD_SENDER_KEY] = keyPair.Public()
 	finish.Records[fastd.RECORD_RECIPIENT_KEY] = peerKey
 	finish.Records[fastd.RECORD_SENDER_HANDSHAKE_KEY] = hsKey.Public()
 	finish.Records[fastd.RECORD_RECIPIENT_HANDSHAKE_KEY] = senderHSKey
+	finish.Records[fastd.RECORD_METHOD_NAME] = []byte("null")
+
 	finish.SignKey = hs.SharedKey()
 
+	conn.Write(finish.Marshal(false))
+}
+
+func waitForPacket(conn *net.UDPConn) *fastd.Message {
+	buf := make([]byte, 1500)
+
+	conn.SetReadDeadline(time.Now().Add(readTimeout))
+	for {
+		n, _, err := conn.ReadFromUDP(buf)
+		log.Printf("got %d bytes", n)
+		if err != nil {
+			if e, ok := err.(net.Error); !ok || !e.Timeout() {
+				log.Fatalf("error reading from UDP socket: %v", err)
+			}
+			log.Fatal("reached timeout")
+		}
+
+		msg, err := fastd.ParseMessage(buf[:n], false)
+
+		if err != nil {
+			log.Println("unable to parse message:", err)
+		} else {
+			return msg
+		}
+	}
 }
 
 func readConfig(fname string) (*config, error) {
