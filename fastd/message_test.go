@@ -2,15 +2,17 @@ package fastd
 
 import (
 	"encoding/hex"
-	"github.com/stretchr/testify/assert"
 	"io/ioutil"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 var (
 	// Keys for the captured testdata
-	testServerSecret = NewKeyPair(MustDecodeString("800e8ff23adcc5df5f6b911581667821ebecf1ecd95b10b6b5f92f4ebef7704c"))
-	testSharedKey    = MustDecodeString("08d845c98084f16cb9d21f6a2d5c270de008ed6faa0f81fa0071360296e227f2")
+	testServerSecret = DecodeKeyPair("800e8ff23adcc5df5f6b911581667821ebecf1ecd95b10b6b5f92f4ebef7704c")
+	testClientSecret = DecodeKeyPair("d82638e3bf436fe92c54649c33aca36064534d4171d7746b7ee36c822b8da149")
+	testSharedKey    = MustDecodeHex("08d845c98084f16cb9d21f6a2d5c270de008ed6faa0f81fa0071360296e227f2")
 )
 
 func TestParseRequest(t *testing.T) {
@@ -62,7 +64,7 @@ func TestVerifySignature(t *testing.T) {
 	assert.False(msg.VerifySignature())
 
 	// Invalid siging key
-	msg.SignKey = MustDecodeString("bd3bd258df61fa369d1bf003a8a3ccb2f08a8931bf8add78eddaefbc1defc5b5")
+	msg.SignKey = MustDecodeHex("bd3bd258df61fa369d1bf003a8a3ccb2f08a8931bf8add78eddaefbc1defc5b5")
 	assert.False(msg.VerifySignature())
 
 	// Valid signing key

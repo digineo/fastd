@@ -105,11 +105,25 @@ func unpackKey(key []byte) *C.ecc_25519_work_t {
 	return &unpacked
 }
 
-func (hs *handshake) makeSharedKey(serverKey *KeyPair, publicKey []byte) bool {
-	A := publicKey
-	B := serverKey.public[:]
-	X := hs.peerHandshakeKey
-	Y := hs.ourHandshakeKey.public[:]
+func (hs *handshake) makeSharedKey(initiator bool, ourKey *KeyPair, peerKey []byte) bool {
+	workXY := unpackKey(hs.peerHandshakeKey)
+	if C.ecc_25519_is_identity(workXY) != 0 {
+		return false
+	}
+
+	var A, B, X, Y []byte
+
+	if initiator {
+		A = ourKey.public[:]
+		B = peerKey
+		X = hs.ourHandshakeKey.public[:]
+		Y = hs.peerHandshakeKey
+	} else {
+		A = peerKey
+		B = ourKey.public[:]
+		X = hs.peerHandshakeKey
+		Y = hs.ourHandshakeKey.public[:]
+	}
 
 	hash := sha256.New()
 	hash.Write(Y)
@@ -126,17 +140,24 @@ func (hs *handshake) makeSharedKey(serverKey *KeyPair, publicKey []byte) bool {
 	d[15] |= 0x80
 	e[15] |= 0x80
 
-	workXY := unpackKey(X)
-	eccPeerKey := unpackKey(publicKey)
+	eccPeerKey := unpackKey(peerKey)
 	var work C.ecc_25519_work_t
-	var eb, eccServerKeySecret, eccHandshakeKeySecret, eccSigma C.ecc_int256_t
+	var eccOurKeySecret, eccHandshakeKeySecret, eccSigma C.ecc_int256_t
 
-	copy(eccServerKeySecret[:], serverKey.secret[:])
+	copy(eccOurKeySecret[:], ourKey.secret[:])
 	copy(eccHandshakeKeySecret[:], hs.ourHandshakeKey.secret[:])
 
-	C.ecc_25519_gf_mult(&eb, &e, &eccServerKeySecret)
-	C.ecc_25519_gf_add(&s, &eb, &eccHandshakeKeySecret)
-	C.ecc_25519_scalarmult_bits(&work, &d, eccPeerKey, 128)
+	if initiator {
+		var da C.ecc_int256_t
+		C.ecc_25519_gf_mult(&da, &d, &eccOurKeySecret)
+		C.ecc_25519_gf_add(&s, &da, &eccHandshakeKeySecret)
+		C.ecc_25519_scalarmult_bits(&work, &e, eccPeerKey, 128)
+	} else {
+		var eb C.ecc_int256_t
+		C.ecc_25519_gf_mult(&eb, &e, &eccOurKeySecret)
+		C.ecc_25519_gf_add(&s, &eb, &eccHandshakeKeySecret)
+		C.ecc_25519_scalarmult_bits(&work, &d, eccPeerKey, 128)
+	}
 	C.ecc_25519_add(&work, workXY, &work)
 
 	/*

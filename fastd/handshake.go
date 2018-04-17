@@ -19,13 +19,21 @@ type handshake struct {
 	timeout          time.Time
 }
 
-func NewHandshake(serverKey, ourHandshakeKey *KeyPair, peerPublicKey, peerHandshakeKey []byte) *handshake {
+func NewInitiatingHandshake(ourKey, ourHandshakeKey *KeyPair, peerPublicKey, peerHandshakeKey []byte) *handshake {
+	return newHandshake(true, ourKey, ourHandshakeKey, peerPublicKey, peerHandshakeKey)
+}
+
+func NewRespondingHandshake(ourKey *KeyPair, peerPublicKey, peerHandshakeKey []byte) *handshake {
+	return newHandshake(false, ourKey, RandomKeypair(), peerPublicKey, peerHandshakeKey)
+}
+
+func newHandshake(initiator bool, ourKey, ourHandshakeKey *KeyPair, peerPublicKey, peerHandshakeKey []byte) *handshake {
 	hs := handshake{
 		peerHandshakeKey: peerHandshakeKey,
 		ourHandshakeKey:  ourHandshakeKey,
 	}
 
-	if !hs.makeSharedKey(serverKey, peerPublicKey) {
+	if !hs.makeSharedKey(initiator, ourKey, peerPublicKey) {
 		return nil
 	}
 
@@ -97,7 +105,7 @@ func (srv *Server) handlePacket(msg *Message) (reply *Message) {
 
 	// start new handshake?
 	if handshakeType == 1 {
-		hs = NewHandshake(srv.config.serverKeys, RandomKeypair(), senderKey, senderHandshakeKey)
+		hs = NewRespondingHandshake(srv.config.serverKeys, senderKey, senderHandshakeKey)
 		if hs == nil {
 			log.Printf("%v unable to make shared handshake key", msg.Src)
 			return nil
