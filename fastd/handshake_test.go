@@ -1,9 +1,10 @@
 package fastd
 
 import (
-	"github.com/stretchr/testify/assert"
 	"net"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestHandshake(t *testing.T) {

@@ -230,7 +230,7 @@ func (msg *Message) Unmarshal(data []byte) (err error) {
 	length := binary.BigEndian.Uint16(data[2:4])
 
 	if len(data)-4 != int(length) {
-		err = fmt.Errorf("wrong data size: expected=%d actual=%d", len(data)-4, length)
+		err = fmt.Errorf("wrong data size: expected=%d actual=%d", length, len(data))
 		return
 	}
 

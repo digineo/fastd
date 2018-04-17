@@ -66,6 +66,13 @@ func NewKeyPair(secret []byte) *KeyPair {
 	return keys
 }
 
+// Public returns a copy of the public key.
+func (keys *KeyPair) Public() []byte {
+	res := make([]byte, KEYSIZE, KEYSIZE)
+	copy(res, keys.public[:])
+	return res
+}
+
 // Derives the public key from the private key and stores it
 func (keys *KeyPair) derivePublic() {
 	var eccWork C.ecc_25519_work_t
@@ -119,7 +126,7 @@ func (hs *handshake) makeSharedKey(serverKey *KeyPair, publicKey []byte) bool {
 	d[15] |= 0x80
 	e[15] |= 0x80
 
-	workXY := unpackKey(hs.peerHandshakeKey)
+	workXY := unpackKey(X)
 	eccPeerKey := unpackKey(publicKey)
 	var work C.ecc_25519_work_t
 	var eb, eccServerKeySecret, eccHandshakeKeySecret, eccSigma C.ecc_int256_t
