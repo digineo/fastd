@@ -69,16 +69,17 @@ func main() {
 
 	// create handshake request 0x01
 	request := fastd.Message{Type: 0x01}
-	request.Records[fastd.RecordHandshakeType] = []byte{0x01}
-	request.Records[fastd.RecordMode] = []byte{0x01}
-	request.Records[fastd.RecordProtocolName] = []byte("ec25519-fhmqvc")
-	request.Records[fastd.RecordSenderKey] = keyPair.Public()
-	request.Records[fastd.RecordVersionName] = []byte("v18")
-	request.Records[fastd.RecordRecipientKey] = peerKey
-	request.Records[fastd.RecordSenderHandshakeKey] = hsKey.Public()
+	request.Records.
+		SetHandshakeType(fastd.HandshakeRequest).
+		SetMode(fastd.ModeTUN).
+		SetProtocolName("ec25519-fhmqvc").
+		SetSenderKey(keyPair.Public()).
+		SetVersionName("v18").
+		SetRecipientKey(peerKey).
+		SetSenderHandshakeKey(hsKey.Public())
 
 	if hostname, _ := os.Hostname(); hostname != "" {
-		request.Records[fastd.RecordHostname] = []byte(hostname)
+		request.Records.SetHostname(hostname)
 	}
 
 	log.Println("Sending:", request.Records)
@@ -96,20 +97,20 @@ func main() {
 	reply := waitForPacket(conn)
 	log.Println("Received:", reply.Records)
 
-	if rec := reply.Records[fastd.RecordHandshakeType]; len(rec) != 1 || rec[0] != 0x02 {
-		log.Fatalf("expected finish handshake packet, received %v", rec)
+	if typ, e := reply.Records.HandshakeType(); e != nil || typ != fastd.HandshakeReply {
+		log.Fatalf("expected finish handshake packet, received %v", typ)
 	}
-	if rec := reply.Records[fastd.RecordReplyCode]; len(rec) != 1 || rec[0] != 0x00 {
-		log.Fatalf("expected finish reply type, received %v", rec)
+	if code, e := reply.Records.ReplyCode(); e != nil || code != fastd.ReplySuccess {
+		log.Fatalf("expected finish reply type, received %v", code)
 	}
 
-	recipientHSKey := reply.Records[fastd.RecordRecipientHandshakeKey]
-	if bytes.Compare(hsKey.Public(), recipientHSKey) != 0 {
+	recipientHSKey, err := reply.Records.RecipientHandshakeKey()
+	if err != nil || bytes.Compare(hsKey.Public(), recipientHSKey) != 0 {
 		log.Fatalf("recipient handshake key mismatch")
 	}
 
-	senderHSKey := reply.Records[fastd.RecordSenderHandshakeKey]
-	if len(senderHSKey) != fastd.KEYSIZE {
+	senderHSKey, err := reply.Records.SenderHandshakeKey()
+	if err != nil || len(senderHSKey) != fastd.KEYSIZE {
 		log.Fatalf("invalid sender handshake key size: %d", len(senderHSKey))
 	}
 
@@ -123,11 +124,12 @@ func main() {
 
 	// create handshake finish 0x03
 	finish := reply.NewReply()
-	finish.Records[fastd.RecordSenderKey] = keyPair.Public()
-	finish.Records[fastd.RecordRecipientKey] = peerKey
-	finish.Records[fastd.RecordSenderHandshakeKey] = hsKey.Public()
-	finish.Records[fastd.RecordRecipientHandshakeKey] = senderHSKey
-	finish.Records[fastd.RecordMethodName] = []byte("null")
+	finish.Records.
+		SetSenderKey(keyPair.Public()).
+		SetRecipientKey(peerKey).
+		SetSenderHandshakeKey(hsKey.Public()).
+		SetRecipientHandshakeKey(senderHSKey).
+		SetMethodName("null")
 
 	finish.SignKey = hs.SharedKey()
 
