@@ -259,6 +259,7 @@ func (r *Records) AuthenticationTag() ([]byte, error) {
 
 // SetMTU updates the RecordMTU field. It returns itself for chaining.
 func (r *Records) SetMTU(val uint16) *Records {
+	r[RecordMTU] = make([]byte, 2, 2)
 	binary.LittleEndian.PutUint16(r[RecordMTU], val)
 	return r
 }
@@ -307,11 +308,8 @@ func (r *Records) SetMethodList(val ...string) *Records {
 }
 
 // MethodList returns the RecordMethodList.
-func (r *Records) MethodList() (val []string, err error) {
-	for _, method := range bytes.Split(r[RecordMethodList], []byte{0x00}) {
-		val = append(val, string(method))
-	}
-	return
+func (r *Records) MethodList() ([]string, error) {
+	return strings.Split(string(r[RecordMethodList]), "\x00"), nil
 }
 
 // SetTLVMAC updates the RecordTLVMAC field. It returns itself for chaining.
@@ -445,8 +443,10 @@ func (r Records) String() string {
 			RecordVars:
 			buffer.WriteString(string(val))
 
-		case RecordMTU,
-			RecordIPv4PrefixLen,
+		case RecordMTU:
+			fmt.Fprintf(&buffer, "%d", binary.LittleEndian.Uint16(val))
+
+		case RecordIPv4PrefixLen,
 			RecordIPv6PrefixLen:
 			fmt.Fprintf(&buffer, "%d", val)
 

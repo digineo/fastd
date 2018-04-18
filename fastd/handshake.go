@@ -11,6 +11,10 @@ import (
 	"github.com/digineo/fastd/ifconfig"
 )
 
+// MinMTU is the minimal usable MTU, all clients are required to
+// support a tunnel MTU of this size.
+const MinMTU = 576
+
 // Handshake is used between two peers to exchange a secret.
 type Handshake struct {
 	sharedKey        []byte
@@ -222,7 +226,7 @@ func (srv *Server) handleFinishHandshake(msg *Message, reply *Message, peer *Pee
 	if err != nil {
 		return fmt.Errorf("%v %v", msg.Src, err)
 	}
-	if mtu < 576 {
+	if mtu < MinMTU {
 		return fmt.Errorf("%v MTU invalid: %d", msg.Src, mtu)
 	}
 	if err := ifconfig.SetMTU(peer.Ifname, mtu); err != nil {
