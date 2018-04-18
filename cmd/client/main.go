@@ -98,20 +98,20 @@ func main() {
 	log.Println("Received:", reply.Records)
 
 	if typ, e := reply.Records.HandshakeType(); e != nil || typ != fastd.HandshakeReply {
-		log.Fatalf("expected finish handshake packet, received %v", typ)
+		log.Fatalf("expected finish handshake packet, received %v (err %v)", typ, e)
 	}
 	if code, e := reply.Records.ReplyCode(); e != nil || code != fastd.ReplySuccess {
-		log.Fatalf("expected finish reply type, received %v", code)
+		log.Fatalf("expected finish reply type, received %v (err %v)", code, e)
 	}
 
 	recipientHSKey, err := reply.Records.RecipientHandshakeKey()
 	if err != nil || bytes.Compare(hsKey.Public(), recipientHSKey) != 0 {
-		log.Fatalf("recipient handshake key mismatch")
+		log.Fatalf("recipient handshake key mismatch (err %v)", err)
 	}
 
 	senderHSKey, err := reply.Records.SenderHandshakeKey()
 	if err != nil || len(senderHSKey) != fastd.KEYSIZE {
-		log.Fatalf("invalid sender handshake key size: %d", len(senderHSKey))
+		log.Fatalf("invalid sender handshake key size: %d (err %v)", len(senderHSKey), err)
 	}
 
 	hs := fastd.NewInitiatingHandshake(keyPair, hsKey, peerKey, senderHSKey)
