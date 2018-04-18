@@ -65,19 +65,23 @@ func (msg *Message) NewReply() *Message {
 		Src:  msg.Dst,
 		Dst:  msg.Src,
 	}
-	reply.Records[RecordHandshakeType] = []byte{msg.Records[RecordHandshakeType][0] + 1}
-	reply.Records[RecordMode] = msg.Records[RecordMode]
-	reply.Records[RecordProtocolName] = msg.Records[RecordProtocolName]
+
+	if typ, err := msg.Records.HandshakeType(); err == nil {
+		reply.Records.SetHandshakeType(typ + 1)
+	}
+	if mode, err := msg.Records.Mode(); err == nil {
+		reply.Records.SetMode(mode)
+	}
+	if name, err := msg.Records.ProtocolName(); err == nil {
+		reply.Records.SetProtocolName(name)
+	}
 	return reply
 }
 
 // SetError sets the error fields
-func (msg *Message) SetError(replyCode byte, errorDetail TLVKey) {
-	msg.Records[RecordReplyCode] = []byte{replyCode}
-
-	value := make([]byte, 2)
-	binary.LittleEndian.PutUint16(value, uint16(errorDetail))
-	msg.Records[RecordErrorDetail] = value
+func (msg *Message) SetError(replyCode ReplyCode, errorDetail TLVKey) {
+	msg.Records.SetReplyCode(replyCode)
+	msg.Records.SetErrorDetail(errorDetail)
 }
 
 // VerifySignature calculates the HMAC and verifies it
