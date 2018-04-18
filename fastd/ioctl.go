@@ -5,6 +5,7 @@ import (
 	"syscall"
 )
 
+// nolint: golint
 var (
 	ioctl_LIST  = _IO('F', 1)
 	ioctl_BIND  = _IOW('F', 2, 18)

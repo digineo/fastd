@@ -18,7 +18,7 @@ type AddressConfig struct {
 type Peer struct {
 	Remote    Sockaddr
 	PublicKey []byte
-	handshake *handshake // handshake until it's finished
+	handshake *Handshake // handshake until it's finished
 	lastSeen  time.Time
 
 	Ifname   string
@@ -112,7 +112,7 @@ func (srv *Server) establishPeer(peer *Peer) bool {
 	return hs.timeout.After(time.Now())
 }
 
-// Removes (disconnects) a peer
+// RemovePeer removes (disconnects) a peer
 func (srv *Server) RemovePeer(peer *Peer) {
 	srv.peersMtx.Lock()
 	srv.removePeerLocked(peer)

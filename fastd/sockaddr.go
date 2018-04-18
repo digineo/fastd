@@ -9,6 +9,7 @@ import (
 	"github.com/digineo/fastd/ifconfig"
 )
 
+// Sockaddr holds an IP address and a port number.
 type Sockaddr struct {
 	IP   net.IP
 	Port uint16
@@ -61,16 +62,21 @@ func (addr *Sockaddr) Write(out []byte) {
 	binary.BigEndian.PutUint16(out[16:], uint16(addr.Port))
 }
 
+// RawFixed writes the socket into an array.
 func (addr *Sockaddr) RawFixed() (raw [18]byte) {
 	addr.Write(raw[:])
 	return
 }
 
+// Raw writes the socket into a slice.
 func (addr *Sockaddr) Raw() []byte {
 	raw := addr.RawFixed()
 	return raw[:]
 }
 
+// Equal reports wheather addr and other are equal. It uses net.IP.Equal
+// for the IP address equality check, hence an IPv4 address and that same
+// address in IPv6 form are considered to be equal.
 func (addr *Sockaddr) Equal(other *Sockaddr) bool {
 	return addr.Port == other.Port && addr.IP.Equal(other.IP)
 }
@@ -80,7 +86,7 @@ func (addr *Sockaddr) Family() int {
 	if ifconfig.IsIPv4(addr.IP) {
 		return syscall.AF_INET
 	}
-		return syscall.AF_INET6
+	return syscall.AF_INET6
 }
 
 func (addr *Sockaddr) String() string {

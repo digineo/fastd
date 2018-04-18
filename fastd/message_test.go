@@ -25,22 +25,22 @@ func TestParseRequest(t *testing.T) {
 
 	assert.Equal("127.0.0.1", msg.Src.IP.String())
 	assert.Equal(8755, int(msg.Src.Port))
-	assert.Equal(int(RECORD_MAX), len(msg.Records))
+	assert.Equal(int(RecordMax), len(msg.Records))
 
 	// Handshake type
-	assert.Equal([]byte{1}, msg.Records[RECORD_HANDSHAKE_TYPE])
+	assert.Equal([]byte{1}, msg.Records[RecordHandshakeType])
 
 	// Protocol name
-	assert.Equal("ec25519-fhmqvc", string(msg.Records[RECORD_PROTOCOL_NAME]))
+	assert.Equal("ec25519-fhmqvc", string(msg.Records[RecordProtocolName]))
 
 	// Recipient Key
-	assert.Equal(hex.EncodeToString(testServerSecret.public[:]), hex.EncodeToString(msg.Records[RECORD_RECIPIENT_KEY]))
+	assert.Equal(hex.EncodeToString(testServerSecret.public[:]), hex.EncodeToString(msg.Records[RecordRecipientKey]))
 
 	// Sender Key
-	assert.Equal("83369beddca777585167520fb54a7fb059102bf4e0a46dd5fb1c633d83db77a2", hex.EncodeToString(msg.Records[RECORD_SENDER_KEY]))
+	assert.Equal("83369beddca777585167520fb54a7fb059102bf4e0a46dd5fb1c633d83db77a2", hex.EncodeToString(msg.Records[RecordSenderKey]))
 
 	// Sender Handshake Key
-	assert.Equal("2d25af50e5beab86fa0014caa5a06a32afca1f3467499c5dbdc252e74d95ee90", hex.EncodeToString(msg.Records[RECORD_SENDER_HANDSHAKE_KEY]))
+	assert.Equal("2d25af50e5beab86fa0014caa5a06a32afca1f3467499c5dbdc252e74d95ee90", hex.EncodeToString(msg.Records[RecordSenderHandshakeKey]))
 
 	// Marshaling
 	assert.Equal(len(bytes), len(msg.Marshal(true)))

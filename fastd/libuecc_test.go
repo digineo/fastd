@@ -31,7 +31,7 @@ func TestMakeRespondingSharedHandshakeKey(t *testing.T) {
 	assert := assert.New(t)
 	peerKey := MustDecodeHex("83369beddca777585167520fb54a7fb059102bf4e0a46dd5fb1c633d83db77a2")
 
-	hs := &handshake{
+	hs := &Handshake{
 		peerHandshakeKey: MustDecodeHex("b4dbdb0c05dd28204534fa27c5afca4dcda5397d833e3064f7a7281b249dc7c7"),
 		ourHandshakeKey:  DecodeKeyPair("a03b6ddf38b693dde2cbefd669ace99c169ca11eae097fb144c5ca9db1cfd176"),
 	}
@@ -44,7 +44,7 @@ func TestMakeInitiatingSharedHandshakeKey(t *testing.T) {
 	assert := assert.New(t)
 	peerKey := MustDecodeHex("346a11a8bd8fcedfcde2e19c996b6e4497d0dafc3f5af7096c915bd0f9fe4fe9")
 
-	hs := &handshake{
+	hs := &Handshake{
 		peerHandshakeKey: MustDecodeHex("3bac2ada2fbfa1ea75b2cb214490d5d718f1bbe5b226184488c07cf1a551e8d9"),
 		ourHandshakeKey:  DecodeKeyPair("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e5f"),
 	}

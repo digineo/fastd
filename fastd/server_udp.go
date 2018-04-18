@@ -14,6 +14,7 @@ type UDPServer struct {
 	wg          sync.WaitGroup
 }
 
+// UDPConn holds an active client connection
 type UDPConn struct {
 	addr Sockaddr
 	conn *net.UDPConn
@@ -21,7 +22,6 @@ type UDPConn struct {
 
 // NewUDPServer creates a new UDP based server
 func NewUDPServer(addresses []Sockaddr) (ServerImpl, error) {
-
 	srv := &UDPServer{
 		recv: make(chan *Message, 10),
 	}
@@ -51,6 +51,7 @@ func (srv *UDPServer) Read() chan *Message {
 	return srv.recv
 }
 
+// Close closes all client connections.
 func (srv *UDPServer) Close() {
 	for _, udpconn := range srv.connections {
 		udpconn.conn.Close()
@@ -58,6 +59,8 @@ func (srv *UDPServer) Close() {
 	close(srv.recv)
 }
 
+// Peers returns a list of connected peers. This is stubbed and will
+// always return an empty list.
 func (srv *UDPServer) Peers() []*Peer {
 	return nil
 }

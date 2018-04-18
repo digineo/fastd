@@ -105,7 +105,7 @@ func unpackKey(key []byte) *C.ecc_25519_work_t {
 	return &unpacked
 }
 
-func (hs *handshake) makeSharedKey(initiator bool, ourKey *KeyPair, peerKey []byte) bool {
+func (hs *Handshake) makeSharedKey(initiator bool, ourKey *KeyPair, peerKey []byte) bool {
 	workXY := unpackKey(hs.peerHandshakeKey)
 	if C.ecc_25519_is_identity(workXY) != 0 {
 		return false

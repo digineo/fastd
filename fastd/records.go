@@ -8,7 +8,7 @@ import (
 )
 
 // Records is an array of all possible records for a handshake packet
-type Records [RECORD_MAX][]byte
+type Records [RecordMax][]byte
 
 // String returns a textual representation of the records
 func (r Records) String() string {
@@ -19,29 +19,29 @@ func (r Records) String() string {
 		if len(val) == 0 {
 			continue
 		}
-		buffer.WriteString(TLV_KEY(key).String())
+		buffer.WriteString(TLVKey(key).String())
 		buffer.WriteRune('=')
 
-		switch TLV_KEY(key) {
-		case RECORD_PROTOCOL_NAME,
-			RECORD_METHOD_NAME,
-			RECORD_VERSION_NAME,
-			RECORD_HOSTNAME,
-			RECORD_VARS:
+		switch TLVKey(key) {
+		case RecordProtocolName,
+			RecordMethodName,
+			RecordVersionName,
+			RecordHostname,
+			RecordVars:
 			buffer.WriteString(string(val))
 
-		case RECORD_MTU,
-			RECORD_IPV4_PREFIXLEN,
-			RECORD_IPV6_PREFIXLEN:
+		case RecordMTU,
+			RecordIPv4PrefixLen,
+			RecordIPv6PrefixLen:
 			fmt.Fprintf(&buffer, "%d", val)
 
-		case RECORD_IPV4_ADDR,
-			RECORD_IPV4_DSTADDR,
-			RECORD_IPV6_ADDR,
-			RECORD_IPV6_DSTADDR:
+		case RecordIPv4Addr,
+			RecordIPv4DstAddr,
+			RecordIPv6Addr,
+			RecordIPv6DstAddr:
 			buffer.WriteString(net.IP(val).String())
 
-		case RECORD_METHOD_LIST:
+		case RecordMethodList:
 			fmt.Fprintf(&buffer, "%v", strings.Split(string(val), "\x00"))
 
 		default:

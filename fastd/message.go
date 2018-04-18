@@ -10,97 +10,99 @@ import (
 	"github.com/pkg/errors"
 )
 
-type TLV_KEY uint16
+type TLVKey uint16 // nolint: golint
 
-func (key TLV_KEY) String() string {
+func (key TLVKey) String() string {
 	switch key {
-	case RECORD_HANDSHAKE_TYPE:
+	case RecordHandshakeType:
 		return "handshake_type"
-	case RECORD_REPLY_CODE:
+	case RecordReplyCode:
 		return "reply_code"
-	case RECORD_ERROR_DETAIL:
+	case RecordErrorDetail:
 		return "error_detail"
-	case RECORD_FLAGS:
+	case RecordFlags:
 		return "flags"
-	case RECORD_MODE:
+	case RecordMode:
 		return "mode"
-	case RECORD_PROTOCOL_NAME:
+	case RecordProtocolName:
 		return "protocol_name"
-	case RECORD_SENDER_KEY:
+	case RecordSenderKey:
 		return "sender_key"
-	case RECORD_RECIPIENT_KEY:
+	case RecordRecipientKey:
 		return "recipient_key"
-	case RECORD_SENDER_HANDSHAKE_KEY:
+	case RecordSenderHandshakeKey:
 		return "sender_handshake_key"
-	case RECORD_RECIPIENT_HANDSHAKE_KEY:
+	case RecordRecipientHandshakeKey:
 		return "recipient_handshake_key"
-	case RECORD_AUTHENTICATION_TAG:
+	case RecordAuthenticationTag:
 		return "authentication_tag"
-	case RECORD_MTU:
+	case RecordMTU:
 		return "mtu"
-	case RECORD_METHOD_NAME:
+	case RecordMethodName:
 		return "method_name"
-	case RECORD_VERSION_NAME:
+	case RecordVersionName:
 		return "version_name"
-	case RECORD_METHOD_LIST:
+	case RecordMethodList:
 		return "method_list"
-	case RECORD_TLV_MAC:
+	case RecordTLVMAC:
 		return "tlv_mac"
-	case RECORD_IPV4_ADDR:
+	case RecordIPv4Addr:
 		return "ipv4_addr"
-	case RECORD_IPV4_DSTADDR:
+	case RecordIPv4DstAddr:
 		return "ipv4_dstaddr"
-	case RECORD_IPV4_PREFIXLEN:
+	case RecordIPv4PrefixLen:
 		return "ipv4_prefixlen"
-	case RECORD_IPV6_ADDR:
+	case RecordIPv6Addr:
 		return "ipv6_addr"
-	case RECORD_IPV6_DSTADDR:
+	case RecordIPv6DstAddr:
 		return "ipv6_dstaddr"
-	case RECORD_IPV6_PREFIXLEN:
+	case RecordIPv6PrefixLen:
 		return "ipv6_prefixlen"
-	case RECORD_VARS:
+	case RecordVars:
 		return "vars"
-	case RECORD_HOSTNAME:
+	case RecordHostname:
 		return "hostname"
 	}
-	return fmt.Sprintf("%%!(TLV_KEY value=%02x)", uint16(key))
+	return fmt.Sprintf("%%!(TLVKey value=%02x)", uint16(key))
 }
 
+// Known record fields
 const (
-	RECORD_HANDSHAKE_TYPE TLV_KEY = iota
-	RECORD_REPLY_CODE
-	RECORD_ERROR_DETAIL
-	RECORD_FLAGS
-	RECORD_MODE
-	RECORD_PROTOCOL_NAME
-	RECORD_SENDER_KEY
-	RECORD_RECIPIENT_KEY
-	RECORD_SENDER_HANDSHAKE_KEY
-	RECORD_RECIPIENT_HANDSHAKE_KEY
-	RECORD_AUTHENTICATION_TAG
-	RECORD_MTU
-	RECORD_METHOD_NAME
-	RECORD_VERSION_NAME
-	RECORD_METHOD_LIST
-	RECORD_TLV_MAC
+	RecordHandshakeType TLVKey = iota
+	RecordReplyCode
+	RecordErrorDetail
+	RecordFlags
+	RecordMode
+	RecordProtocolName
+	RecordSenderKey
+	RecordRecipientKey
+	RecordSenderHandshakeKey
+	RecordRecipientHandshakeKey
+	RecordAuthenticationTag
+	RecordMTU
+	RecordMethodName
+	RecordVersionName
+	RecordMethodList
+	RecordTLVMAC
 
 	// Inofficial yet
-	RECORD_IPV4_ADDR
-	RECORD_IPV4_DSTADDR
-	RECORD_IPV4_PREFIXLEN
-	RECORD_IPV6_ADDR
-	RECORD_IPV6_DSTADDR
-	RECORD_IPV6_PREFIXLEN
-	RECORD_VARS
-	RECORD_HOSTNAME
+	RecordIPv4Addr
+	RecordIPv4DstAddr
+	RecordIPv4PrefixLen
+	RecordIPv6Addr
+	RecordIPv6DstAddr
+	RecordIPv6PrefixLen
+	RecordVars
+	RecordHostname
 
-	RECORD_MAX
+	RecordMax
 )
 
+// Known reply codes.
 const (
-	REPLY_SUCCESS byte = iota
-	REPLY_RECORD_MISSING
-	REPLY_UNACCEPTABLE_VALUE
+	ReplySuccess byte = iota
+	ReplyRecordMissing
+	ReplyUnacceptableValue
 )
 
 // Message is a fastd handshake message
@@ -120,19 +122,19 @@ func (msg *Message) NewReply() *Message {
 		Src:  msg.Dst,
 		Dst:  msg.Src,
 	}
-	reply.Records[RECORD_HANDSHAKE_TYPE] = []byte{msg.Records[RECORD_HANDSHAKE_TYPE][0] + 1}
-	reply.Records[RECORD_MODE] = msg.Records[RECORD_MODE]
-	reply.Records[RECORD_PROTOCOL_NAME] = msg.Records[RECORD_PROTOCOL_NAME]
+	reply.Records[RecordHandshakeType] = []byte{msg.Records[RecordHandshakeType][0] + 1}
+	reply.Records[RecordMode] = msg.Records[RecordMode]
+	reply.Records[RecordProtocolName] = msg.Records[RecordProtocolName]
 	return reply
 }
 
 // SetError sets the error fields
-func (msg *Message) SetError(replyCode byte, errorDetail TLV_KEY) {
-	msg.Records[RECORD_REPLY_CODE] = []byte{replyCode}
+func (msg *Message) SetError(replyCode byte, errorDetail TLVKey) {
+	msg.Records[RecordReplyCode] = []byte{replyCode}
 
 	value := make([]byte, 2)
 	binary.LittleEndian.PutUint16(value, uint16(errorDetail))
-	msg.Records[RECORD_ERROR_DETAIL] = value
+	msg.Records[RecordErrorDetail] = value
 }
 
 // VerifySignature calculates the HMAC and verifies it
@@ -144,7 +146,7 @@ func (msg *Message) VerifySignature() bool {
 	mac := hmac.New(sha256.New, msg.SignKey)
 	mac.Write(msg.raw[4:])
 
-	return bytes.Equal(mac.Sum(nil), msg.Records[RECORD_TLV_MAC])
+	return bytes.Equal(mac.Sum(nil), msg.Records[RecordTLVMAC])
 }
 
 // ParseMessage parses the message bytes
@@ -187,13 +189,15 @@ func (msg *Message) Marshal(includeSockaddr bool) []byte {
 	return bytes[:offset+n]
 }
 
+// MarshalPayload writes the payload into the given slice. The slice needs
+// to be large enough to hold the payload data, or else it will panic.
 func (msg *Message) MarshalPayload(out []byte) int {
 	// Header
 	out[0] = msg.Type
 	i := 4
 
 	// Function for appending records
-	addRecord := func(key TLV_KEY, val []byte) {
+	addRecord := func(key TLVKey, val []byte) {
 		binary.LittleEndian.PutUint16(out[i:], uint16(key))
 		binary.LittleEndian.PutUint16(out[i+2:], uint16(len(val)))
 		copy(out[i+4:], val)
@@ -203,13 +207,13 @@ func (msg *Message) MarshalPayload(out []byte) int {
 	// Append records
 	for key, val := range msg.Records {
 		if val != nil {
-			addRecord(TLV_KEY(key), val)
+			addRecord(TLVKey(key), val)
 		}
 	}
 
 	// Add HMAC (optional)
 	if msg.SignKey != nil {
-		addRecord(RECORD_TLV_MAC, make([]byte, sha256.Size))
+		addRecord(RecordTLVMAC, make([]byte, sha256.Size))
 		mac := hmac.New(sha256.New, msg.SignKey)
 		mac.Write(out[4:i])
 		copy(out[i-sha256.Size:], mac.Sum(nil))
@@ -238,10 +242,10 @@ func (msg *Message) Unmarshal(data []byte) (err error) {
 	data = data[4:]
 
 	for len(data) >= 4 {
-		typ := TLV_KEY(binary.LittleEndian.Uint16(data[0:2]))
+		typ := TLVKey(binary.LittleEndian.Uint16(data[0:2]))
 		length = binary.LittleEndian.Uint16(data[2:4])
 
-		if typ >= RECORD_MAX {
+		if typ >= RecordMax {
 			// unsupported field
 			continue
 		}
@@ -253,7 +257,7 @@ func (msg *Message) Unmarshal(data []byte) (err error) {
 			return
 		}
 
-		if typ == RECORD_TLV_MAC {
+		if typ == RecordTLVMAC {
 			// Add record and copy value
 			value := make([]byte, length)
 			copy(value, data[:length])
