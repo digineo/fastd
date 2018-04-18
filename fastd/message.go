@@ -10,22 +10,49 @@ import (
 	"github.com/pkg/errors"
 )
 
+// MessageType diffentiates between data and control messages.
+type MessageType byte
 
+// Known message types.
 const (
+	TypeHandshake MessageType = iota + 1
+	TypeData
 )
+
+// HandshakeType identifies the message in the handshake.
+type HandshakeType byte
+
+// Known handshake types.
+const (
+	HandshakeRequest HandshakeType = iota + 1
+	HandshakeReply
+	HandshakeFinish
+)
+
+// A ReplyCode is set in handshake packets.
+type ReplyCode byte
 
 // Known reply codes.
 const (
-	ReplySuccess byte = iota
+	ReplySuccess ReplyCode = iota
 	ReplyRecordMissing
 	ReplyUnacceptableValue
+)
+
+// Mode represents tunnel modes.
+type Mode byte
+
+// Known tunnel modes.
+const (
+	ModeTAP Mode = iota
+	ModeTUN
 )
 
 // Message is a fastd handshake message
 type Message struct {
 	Src     Sockaddr
 	Dst     Sockaddr
-	Type    byte
+	Type    MessageType
 	Records Records
 	SignKey []byte
 	raw     []byte
@@ -34,7 +61,7 @@ type Message struct {
 // NewReply creates a reply to the message
 func (msg *Message) NewReply() *Message {
 	reply := &Message{
-		Type: 0x01,
+		Type: TypeHandshake,
 		Src:  msg.Dst,
 		Dst:  msg.Src,
 	}
@@ -80,7 +107,7 @@ func ParseMessage(buf []byte, includeSockaddr bool) (*Message, error) {
 		return nil, fmt.Errorf("packet too small (%d bytes)", len(buf))
 	}
 
-	msg.Type = buf[offset]
+	msg.Type = MessageType(buf[offset])
 	msg.raw = buf[offset:]
 
 	if err := msg.Unmarshal(msg.raw); err != nil {
@@ -109,7 +136,7 @@ func (msg *Message) Marshal(includeSockaddr bool) []byte {
 // to be large enough to hold the payload data, or else it will panic.
 func (msg *Message) MarshalPayload(out []byte) int {
 	// Header
-	out[0] = msg.Type
+	out[0] = byte(msg.Type)
 	i := 4
 
 	// Function for appending records
@@ -144,7 +171,7 @@ func (msg *Message) MarshalPayload(out []byte) int {
 // Unmarshal decodes the packet
 // It will zero the HMAC bytes in the given slice
 func (msg *Message) Unmarshal(data []byte) (err error) {
-	msg.Type = data[0]
+	msg.Type = MessageType(data[0])
 
 	// fastd header
 	length := binary.BigEndian.Uint16(data[2:4])

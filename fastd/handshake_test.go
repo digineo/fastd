@@ -26,8 +26,8 @@ func TestHandshake(t *testing.T) {
 	assert.NotNil(reply)
 	assert.NotNil(reply.SignKey)
 	assert.NotNil(peer.handshake)
-	assert.Equal([]byte{2}, reply.Records[RecordHandshakeType])
-	assert.Equal([]byte{0}, reply.Records[RecordReplyCode])
+	assert.Equal([]byte{byte(HandshakeReply)}, reply.Records[RecordHandshakeType])
+	assert.Equal([]byte{byte(ReplySuccess)}, reply.Records[RecordReplyCode])
 	assert.Equal(msg.Records[RecordSenderKey], reply.Records[RecordRecipientKey])
 	assert.Equal(msg.Records[RecordProtocolName], reply.Records[RecordProtocolName])
 
