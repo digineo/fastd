@@ -31,6 +31,26 @@ func TestHandshake(t *testing.T) {
 	assert.Equal(msg.Records[RecordSenderKey], reply.Records[RecordRecipientKey])
 	assert.Equal(msg.Records[RecordProtocolName], reply.Records[RecordProtocolName])
 
+	typ, err := reply.Records.HandshakeType()
+	assert.NoError(err)
+	assert.Equal(HandshakeReply, typ)
+
+	code, err := reply.Records.ReplyCode()
+	assert.NoError(err)
+	assert.Equal(ReplySuccess, code)
+
+	lkey, err := msg.Records.SenderKey()
+	assert.NoError(err)
+	rkey, err := reply.Records.RecipientKey()
+	assert.NoError(err)
+	assert.Equal(lkey, rkey)
+
+	lproto, err := msg.Records.ProtocolName()
+	assert.NoError(err)
+	rproto, err := reply.Records.ProtocolName()
+	assert.NoError(err)
+	assert.Equal(lproto, rproto)
+
 	// Handshake finish (0x03)
 	msg = readTestmsg("null-finish.dat")
 
