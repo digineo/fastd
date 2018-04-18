@@ -33,3 +33,4 @@
 *.su
 
 cmd/client/config.json
+cmd/client/client
