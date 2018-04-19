@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"net"
 	"strings"
 
@@ -31,17 +30,13 @@ func (tun *linuxTunIface) Configure(local, remote net.IP, mtu uint16) error {
 	}
 
 	netlink.LinkSetMTU(link, int(mtu))
-
-	log.Printf("link: %#v", link)
-	log.Printf("link attrs: %#v", link.Attrs())
-
 	return nil // fmt.Errorf("not implemented yet")
 }
 
 func newTunDevice() (Interface, error) {
 	config := water.Config{DeviceType: water.TUN}
 
-	if name, err := findName("tun"); err == nil {
+	if name, err := findName("fastd"); err == nil {
 		config.Name = name
 	} else {
 		return nil, err

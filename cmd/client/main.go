@@ -98,6 +98,35 @@ func main() {
 	if verbose {
 		log.Println("received payload:", reply.Records)
 	}
+	local4, e := reply.Records.IPv4Addr()
+	if e != nil {
+		log.Fatalf("%v", e)
+	}
+	remote4, e := reply.Records.IPv4DstAddr()
+	if e != nil {
+		log.Fatalf("%v", e)
+	}
+	prefix4, e := reply.Records.IPv4PrefixLen()
+	if e != nil {
+		prefix4 = 31
+		log.Printf("%v, assuming /%d", e, prefix4)
+	}
+	local6, e := reply.Records.IPv6Addr()
+	if e != nil {
+		log.Fatalf("%v", e)
+	}
+	remote6, e := reply.Records.IPv6DstAddr()
+	if e != nil {
+		log.Fatalf("%v", e)
+	}
+	prefix6, e := reply.Records.IPv6PrefixLen()
+	if e != nil {
+		prefix6 = 127
+		log.Printf("%v, assuming /%d", e, prefix6)
+	}
+
+	log.Printf("local   %s/%d   %s/%d", local4, prefix4, local6, prefix6)
+	log.Printf("remote  %s/%d   %s/%d", remote4, prefix4, remote6, prefix6)
 
 	if typ, e := reply.Records.HandshakeType(); e != nil || typ != fastd.HandshakeReply {
 		log.Fatalf("expected finish handshake packet, received %v (err %v)", typ, e)
