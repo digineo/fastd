@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-// TLVKey identifies the Type-Length-Value.
+// TLVKey identifies the Type-Length-Value record.
 type TLVKey uint16
 
 func (key TLVKey) String() string {
@@ -65,7 +65,7 @@ func (key TLVKey) String() string {
 	return fmt.Sprintf("%%!(TLVKey value=%02x)", uint16(key))
 }
 
-// Known record fields. Fields > RecordTLVMAC are inofficial as of yet.
+// Known record fields. TLVKey > RecordTLVMAC are inofficial as of yet.
 const (
 	RecordHandshakeType TLVKey = iota
 	RecordReplyCode
@@ -77,7 +77,7 @@ const (
 	RecordRecipientKey
 	RecordSenderHandshakeKey
 	RecordRecipientHandshakeKey
-	RecordAuthenticationTag
+	RecordAuthenticationTag // obsolete, not used if secure handshakes are enabled
 	RecordMTU
 	RecordMethodName
 	RecordVersionName
@@ -352,14 +352,17 @@ func (r *Records) IPv4DstAddr() (net.IP, error) {
 }
 
 // SetIPv4PrefixLen updates the RecordIPv4PrefixLen field. It returns itself for chaining.
-func (r *Records) SetIPv4PrefixLen(val []byte) *Records {
-	r[RecordIPv4PrefixLen] = val
+func (r *Records) SetIPv4PrefixLen(val uint8) *Records {
+	r[RecordIPv4PrefixLen] = []byte{val}
 	return r
 }
 
 // IPv4PrefixLen returns the RecordIPv4PrefixLen.
-func (r *Records) IPv4PrefixLen() ([]byte, error) {
-	return r[RecordIPv4PrefixLen], nil
+func (r *Records) IPv4PrefixLen() (uint8, error) {
+	if val := r[RecordIPv4PrefixLen]; len(val) == 1 {
+		return r[RecordIPv4PrefixLen][0], nil
+	}
+	return 0, &errValueMissing{RecordIPv4PrefixLen}
 }
 
 // SetIPv6Addr updates the RecordIPv6Addr field. It returns itself for chaining.
@@ -391,14 +394,17 @@ func (r *Records) IPv6DstAddr() (net.IP, error) {
 }
 
 // SetIPv6PrefixLen updates the RecordIPv6PrefixLen field. It returns itself for chaining.
-func (r *Records) SetIPv6PrefixLen(val []byte) *Records {
-	r[RecordIPv6PrefixLen] = val
+func (r *Records) SetIPv6PrefixLen(val uint8) *Records {
+	r[RecordIPv6PrefixLen] = []byte{val}
 	return r
 }
 
 // IPv6PrefixLen returns the RecordIPv6PrefixLen.
-func (r *Records) IPv6PrefixLen() ([]byte, error) {
-	return r[RecordIPv6PrefixLen], nil
+func (r *Records) IPv6PrefixLen() (uint8, error) {
+	if val := r[RecordIPv6PrefixLen]; len(val) == 1 {
+		return r[RecordIPv6PrefixLen][0], nil
+	}
+	return 0, &errValueMissing{RecordIPv6PrefixLen}
 }
 
 // SetVars updates the RecordVars field. It returns itself for chaining.
@@ -432,15 +438,18 @@ func (r Records) String() string {
 		if len(val) == 0 {
 			continue
 		}
-		buffer.WriteString(TLVKey(key).String())
+		typ := TLVKey(key)
+		if typ > RecordTLVMAC {
+			buffer.WriteString("(inofficial)")
+		}
+		buffer.WriteString(typ.String())
 		buffer.WriteRune('=')
 
-		switch TLVKey(key) {
+		switch typ {
 		case RecordProtocolName,
 			RecordMethodName,
 			RecordVersionName,
-			RecordHostname,
-			RecordVars:
+			RecordHostname:
 			buffer.WriteString(string(val))
 
 		case RecordMTU:
@@ -448,7 +457,7 @@ func (r Records) String() string {
 
 		case RecordIPv4PrefixLen,
 			RecordIPv6PrefixLen:
-			fmt.Fprintf(&buffer, "%d", val)
+			fmt.Fprintf(&buffer, "%d", val[0])
 
 		case RecordIPv4Addr,
 			RecordIPv4DstAddr,
@@ -456,7 +465,8 @@ func (r Records) String() string {
 			RecordIPv6DstAddr:
 			buffer.WriteString(net.IP(val).String())
 
-		case RecordMethodList:
+		case RecordMethodList,
+			RecordVars:
 			fmt.Fprintf(&buffer, "%v", strings.Split(string(val), "\x00"))
 
 		default:
