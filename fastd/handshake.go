@@ -2,7 +2,6 @@ package fastd
 
 import (
 	"bytes"
-	"encoding/binary"
 	"encoding/hex"
 	"fmt"
 	"log"
@@ -12,42 +11,74 @@ import (
 	"github.com/digineo/fastd/ifconfig"
 )
 
-type handshake struct {
+// MinMTU is the minimal usable MTU, all clients are required to
+// support a tunnel MTU of this size.
+const MinMTU = 576
+
+// Handshake is used between two peers to exchange a secret.
+type Handshake struct {
 	sharedKey        []byte
 	peerHandshakeKey []byte   // public handshake key from Alice
 	ourHandshakeKey  *KeyPair // our handshake key
 	timeout          time.Time
 }
 
-func newHandshake(serverKey *KeyPair, publicKey, peerHandshakeKey []byte) *handshake {
-	hs := handshake{
+// NewInitiatingHandshake initiates a new handshake.
+func NewInitiatingHandshake(ourKey, ourHandshakeKey *KeyPair, peerPublicKey, peerHandshakeKey []byte) *Handshake {
+	return newHandshake(true, ourKey, ourHandshakeKey, peerPublicKey, peerHandshakeKey)
+}
+
+// NewRespondingHandshake responds to a handshake.
+func NewRespondingHandshake(ourKey *KeyPair, peerPublicKey, peerHandshakeKey []byte) *Handshake {
+	return newHandshake(false, ourKey, RandomKeypair(), peerPublicKey, peerHandshakeKey)
+}
+
+func newHandshake(initiator bool, ourKey, ourHandshakeKey *KeyPair, peerPublicKey, peerHandshakeKey []byte) *Handshake {
+	hs := Handshake{
 		peerHandshakeKey: peerHandshakeKey,
-		ourHandshakeKey:  RandomKeypair(),
+		ourHandshakeKey:  ourHandshakeKey,
 	}
 
-	if !hs.makeSharedKey(serverKey, publicKey) {
+	if !hs.makeSharedKey(initiator, ourKey, peerPublicKey) {
 		return nil
 	}
 
 	return &hs
 }
 
+// SharedKey returns a copy of the shared key.
+func (hs *Handshake) SharedKey() []byte {
+	res := make([]byte, len(hs.sharedKey), len(hs.sharedKey))
+	copy(res, hs.sharedKey)
+	return res
+}
+
 func (srv *Server) handlePacket(msg *Message) (reply *Message) {
 	records := msg.Records
-	var handshakeType byte
-
-	if val := records[RECORD_HANDSHAKE_TYPE]; len(val) != 1 {
+	handshakeType, err := records.HandshakeType()
+	if err != nil {
 		log.Printf("%v handshake type missing", msg.Src)
 		return
-	} else {
-		handshakeType = val[0]
 	}
 
-	senderKey := records[RECORD_SENDER_KEY]
-	recipientKey := records[RECORD_RECIPIENT_KEY]
-	senderHandshakeKey := records[RECORD_SENDER_HANDSHAKE_KEY]
+	senderKey, err := records.SenderKey()
+	if err != nil {
+		log.Printf("%v sender key missing", msg.Src)
+		return
+	}
+	recipientKey, err := records.RecipientKey()
+	if err != nil {
+		log.Printf("%v recipient key missing", msg.Src)
+		return
+	}
+	senderHandshakeKey, err := records.SenderHandshakeKey()
+	if err != nil {
+		log.Printf("%v sender handshake type missing", msg.Src)
+		return
+	}
 
-	log.Printf("%v received handshake type=%x version=%s hostname=%s pubkey=%s", msg.Src, handshakeType, records[RECORD_VERSION_NAME], records[RECORD_HOSTNAME], hex.EncodeToString(senderKey))
+	log.Printf("%v received handshake type=%x version=%s hostname=%s pubkey=%s",
+		msg.Src, handshakeType, records[RecordVersionName], records[RecordHostname], hex.EncodeToString(senderKey))
 
 	if reflect.DeepEqual(msg.Src, msg.Dst) {
 		log.Printf("%v source address equals destination address", msg.Src)
@@ -58,25 +89,25 @@ func (srv *Server) handlePacket(msg *Message) (reply *Message) {
 
 	if recipientKey == nil {
 		log.Printf("%v recipient key missing", msg.Src)
-		reply.SetError(REPLY_RECORD_MISSING, RECORD_RECIPIENT_KEY)
+		reply.SetError(ReplyRecordMissing, RecordRecipientKey)
 		return
 	}
 
 	if !bytes.Equal(recipientKey, srv.config.serverKeys.public[:]) {
 		log.Printf("%v recipient key invalid: %s", msg.Src, hex.EncodeToString(recipientKey))
-		reply.SetError(REPLY_UNACCEPTABLE_VALUE, RECORD_RECIPIENT_KEY)
+		reply.SetError(ReplyUnacceptableValue, RecordRecipientKey)
 		return
 	}
 
 	if senderKey == nil {
 		log.Printf("%v sender key missing", msg.Src)
-		reply.SetError(REPLY_RECORD_MISSING, RECORD_SENDER_KEY)
+		reply.SetError(ReplyRecordMissing, RecordSenderKey)
 		return
 	}
 
 	if senderHandshakeKey == nil {
 		log.Printf("%v sender handshake key missing", msg.Src)
-		reply.SetError(REPLY_RECORD_MISSING, RECORD_SENDER_HANDSHAKE_KEY)
+		reply.SetError(ReplyRecordMissing, RecordSenderHandshakeKey)
 		return
 	}
 
@@ -92,8 +123,8 @@ func (srv *Server) handlePacket(msg *Message) (reply *Message) {
 	hs := peer.handshake
 
 	// start new handshake?
-	if handshakeType == 1 {
-		hs = newHandshake(srv.config.serverKeys, senderKey, senderHandshakeKey)
+	if handshakeType == HandshakeRequest {
+		hs = NewRespondingHandshake(srv.config.serverKeys, senderKey, senderHandshakeKey)
 		if hs == nil {
 			log.Printf("%v unable to make shared handshake key", msg.Src)
 			return nil
@@ -107,17 +138,20 @@ func (srv *Server) handlePacket(msg *Message) (reply *Message) {
 	peer.lastSeen = time.Now()
 
 	reply.SignKey = hs.sharedKey
-	reply.Records[RECORD_REPLY_CODE] = []byte{REPLY_SUCCESS}
-	reply.Records[RECORD_METHOD_LIST] = []byte("null")
-	reply.Records[RECORD_VERSION_NAME] = []byte("v18")
-	reply.Records[RECORD_MTU] = records[RECORD_MTU]
-	reply.Records[RECORD_SENDER_KEY] = srv.config.serverKeys.public[:]
-	reply.Records[RECORD_SENDER_HANDSHAKE_KEY] = hs.ourHandshakeKey.public[:]
-	reply.Records[RECORD_RECIPIENT_KEY] = senderKey
-	reply.Records[RECORD_RECIPIENT_HANDSHAKE_KEY] = senderHandshakeKey
+	reply.Records.
+		SetReplyCode(ReplySuccess).
+		SetMethodList("null").
+		SetVersionName("v18").
+		SetSenderKey(srv.config.serverKeys.public[:]).
+		SetSenderHandshakeKey(hs.ourHandshakeKey.public[:]).
+		SetRecipientKey(senderKey).
+		SetRecipientHandshakeKey(senderHandshakeKey)
+
+	// avoid casting from byte → uint16 → byte
+	reply.Records[RecordMTU] = records[RecordMTU]
 
 	switch handshakeType {
-	case 1:
+	case HandshakeRequest:
 		if err := srv.verifyPeer(peer); err != nil {
 			log.Printf("%v verify failed: %s", msg.Src, err)
 			return nil
@@ -140,21 +174,21 @@ func (srv *Server) handlePacket(msg *Message) (reply *Message) {
 
 		// Copy Vars
 		if peer.Vars != nil {
-			reply.Records[RECORD_VARS] = peer.Vars
+			reply.Records.SetVars(peer.Vars)
 		}
 
 		// Copy IPv4 addresses into response
 		if peer.IPv4.LocalAddr != nil && peer.IPv4.DestAddr != nil {
-			reply.Records[RECORD_IPV4_ADDR] = []byte(peer.IPv4.DestAddr.To4())
-			reply.Records[RECORD_IPV4_DSTADDR] = []byte(peer.IPv4.LocalAddr.To4())
+			reply.Records.SetIPv4Addr(peer.IPv4.DestAddr)
+			reply.Records.SetIPv4DstAddr(peer.IPv4.LocalAddr)
 		}
 
 		// Copy IPv6 addresses into response
 		if peer.IPv6.LocalAddr != nil && peer.IPv6.DestAddr != nil {
-			reply.Records[RECORD_IPV6_ADDR] = []byte(peer.IPv6.DestAddr.To16())
-			reply.Records[RECORD_IPV6_DSTADDR] = []byte(peer.IPv6.LocalAddr.To16())
+			reply.Records.SetIPv6Addr(peer.IPv6.DestAddr)
+			reply.Records.SetIPv6DstAddr(peer.IPv6.LocalAddr)
 		}
-	case 3:
+	case HandshakeFinish:
 		msg.SignKey = hs.sharedKey
 		if err := srv.handleFinishHandshake(msg, reply, peer); err != nil {
 			log.Printf("%v handshake failed: %s", msg.Src, err)
@@ -168,15 +202,14 @@ func (srv *Server) handlePacket(msg *Message) (reply *Message) {
 }
 
 func (srv *Server) handleFinishHandshake(msg *Message, reply *Message, peer *Peer) error {
-	methodName := msg.Records[RECORD_METHOD_NAME]
-	var mtu uint16
+	methodName := msg.Records[RecordMethodName]
 
 	if methodName == nil {
-		reply.SetError(REPLY_RECORD_MISSING, RECORD_METHOD_NAME)
+		reply.SetError(ReplyRecordMissing, RecordMethodName)
 		return fmt.Errorf("method name missing")
 	}
 	if string(methodName) != "null" {
-		reply.SetError(REPLY_UNACCEPTABLE_VALUE, RECORD_METHOD_NAME)
+		reply.SetError(ReplyUnacceptableValue, RecordMethodName)
 		return fmt.Errorf("method name invalid: %s", methodName)
 	}
 
@@ -189,21 +222,17 @@ func (srv *Server) handleFinishHandshake(msg *Message, reply *Message, peer *Pee
 	}
 
 	// Decode and set MTU
-	if val := msg.Records[RECORD_MTU]; len(val) == 0 {
-		return fmt.Errorf("%v MTU missing", msg.Src)
-	} else if len(val) != 2 {
-		return fmt.Errorf("%v MTU invalid: %v", msg.Src, val)
+	mtu, err := msg.Records.MTU()
+	if err != nil {
+		return fmt.Errorf("%v %v", msg.Src, err)
+	}
+	if mtu < MinMTU {
+		return fmt.Errorf("%v MTU invalid: %d", msg.Src, mtu)
+	}
+	if err := ifconfig.SetMTU(peer.Ifname, mtu); err != nil {
+		log.Printf("%v unable to set MTU to %d: %s", msg.Src, mtu, err)
 	} else {
-		mtu = binary.LittleEndian.Uint16(val)
-		if mtu < 576 {
-			return fmt.Errorf("%v MTU invalid: %d", msg.Src, mtu)
-		}
-
-		if err := ifconfig.SetMTU(peer.Ifname, mtu); err != nil {
-			log.Printf("%v unable to set MTU to %d: %s", msg.Src, mtu, err)
-		} else {
-			peer.MTU = mtu
-		}
+		peer.MTU = mtu
 	}
 
 	// Clear handshake keys

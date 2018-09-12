@@ -1,9 +1,10 @@
 package fastd
 
 import (
-	"github.com/stretchr/testify/assert"
 	"net"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestHandshake(t *testing.T) {
@@ -25,10 +26,30 @@ func TestHandshake(t *testing.T) {
 	assert.NotNil(reply)
 	assert.NotNil(reply.SignKey)
 	assert.NotNil(peer.handshake)
-	assert.Equal([]byte{2}, reply.Records[RECORD_HANDSHAKE_TYPE])
-	assert.Equal([]byte{0}, reply.Records[RECORD_REPLY_CODE])
-	assert.Equal(msg.Records[RECORD_SENDER_KEY], reply.Records[RECORD_RECIPIENT_KEY])
-	assert.Equal(msg.Records[RECORD_PROTOCOL_NAME], reply.Records[RECORD_PROTOCOL_NAME])
+	assert.Equal([]byte{byte(HandshakeReply)}, reply.Records[RecordHandshakeType])
+	assert.Equal([]byte{byte(ReplySuccess)}, reply.Records[RecordReplyCode])
+	assert.Equal(msg.Records[RecordSenderKey], reply.Records[RecordRecipientKey])
+	assert.Equal(msg.Records[RecordProtocolName], reply.Records[RecordProtocolName])
+
+	typ, err := reply.Records.HandshakeType()
+	assert.NoError(err)
+	assert.Equal(HandshakeReply, typ)
+
+	code, err := reply.Records.ReplyCode()
+	assert.NoError(err)
+	assert.Equal(ReplySuccess, code)
+
+	lkey, err := msg.Records.SenderKey()
+	assert.NoError(err)
+	rkey, err := reply.Records.RecipientKey()
+	assert.NoError(err)
+	assert.Equal(lkey, rkey)
+
+	lproto, err := msg.Records.ProtocolName()
+	assert.NoError(err)
+	rproto, err := reply.Records.ProtocolName()
+	assert.NoError(err)
+	assert.Equal(lproto, rproto)
 
 	// Handshake finish (0x03)
 	msg = readTestmsg("null-finish.dat")

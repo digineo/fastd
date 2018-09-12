@@ -15,11 +15,10 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-const (
-	// DevicePath is the path to the fastd kernel device
-	DevicePath = "/dev/fastd"
-)
+// DevicePath is the path to the fastd kernel device
+const DevicePath = "/dev/fastd"
 
+// KernelServer implements a fastd server using a kernel module.
 type KernelServer struct {
 	dev       *os.File      // Interface to kernel
 	recv      chan *Message // Received messages
@@ -27,6 +26,7 @@ type KernelServer struct {
 	cancel    chan struct{}
 }
 
+// NewKernelServer creates a kernel based server.
 func NewKernelServer(addresses []Sockaddr) (ServerImpl, error) {
 	dev, err := os.OpenFile(DevicePath, os.O_RDWR, 0644)
 	if err != nil {
@@ -80,6 +80,7 @@ func (srv *KernelServer) Read() chan *Message {
 	return srv.recv
 }
 
+// Close closes all client connections.
 func (srv *KernelServer) Close() {
 	close(srv.cancel)
 	if srv.dev != nil {
@@ -88,7 +89,7 @@ func (srv *KernelServer) Close() {
 	close(srv.recv)
 }
 
-// Iterates over existing interfaces and returns the peers
+// Peers iterates over existing interfaces and returns the peers.
 func (srv *KernelServer) Peers() (peers []*Peer) {
 	ifaces, err := net.Interfaces()
 	if err != nil {

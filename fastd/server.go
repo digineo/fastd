@@ -9,6 +9,7 @@ import (
 	"github.com/digineo/fastd/ifconfig"
 )
 
+// Server is a fastd server.
 type Server struct {
 	peers    map[string]*Peer // indexed by remote endpoint
 	peersMtx sync.RWMutex
@@ -20,6 +21,7 @@ type Server struct {
 	timeoutStop   chan struct{}
 }
 
+// ServerImpl is the common interface for UDP and Kernel servers.
 type ServerImpl interface {
 	Read() chan *Message  // returns the channel for incoming messages
 	Write(*Message) error // sends a message
@@ -27,17 +29,19 @@ type ServerImpl interface {
 	Peers() []*Peer       // returns list of existing peers
 }
 
+// ServerBuilder is a func returning a server implementation. Known
+// server builders are NewUDPServer and NewKernelServer.
 type ServerBuilder func([]Sockaddr) (ServerImpl, error)
 
-var (
-	implementations = map[string]ServerBuilder{
-		"udp":    NewUDPServer,
-		"kernel": NewKernelServer,
-	}
-)
+// TODO: use constants
+var implementations = map[string]ServerBuilder{
+	"udp":    NewUDPServer,
+	"kernel": NewKernelServer,
+}
 
+// NewServer constructs and starts a new server instance. implName must
+// be either one of "udp" or "kernel".
 func NewServer(implName string, config *Config) (srv *Server, err error) {
-
 	impl := implementations[implName]
 	if impl == nil {
 		err = fmt.Errorf("unknown implementation: %v", impl)

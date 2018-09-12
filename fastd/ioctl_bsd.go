@@ -1,5 +1,6 @@
 // source: https://github.com/kr/pty/blob/master/ioctl_bsd.go
 
+// nolint: golint
 package fastd
 
 // from <sys/ioccom.h>
