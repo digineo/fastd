@@ -18,9 +18,12 @@ var (
 	configFile = "./config.json"
 	verbose    = false
 	tunnel     Interface
+	udpConn    *net.UDPConn
 )
 
 func main() {
+	log.SetFlags(log.Lshortfile)
+
 	flag.StringVar(&configFile, "config", configFile, "`PATH` to config file")
 	flag.BoolVar(&verbose, "v", verbose, "enable verbose output (warning: contains session keys)")
 	flag.Parse()
@@ -45,7 +48,7 @@ func main() {
 	}
 	log.Printf("resolved %q to %s", cfg.RemoteAddr, addr)
 
-	conn, err := net.DialUDP("udp", nil, addr)
+	udpConn, err = net.DialUDP("udp", nil, addr)
 	if err != nil {
 		log.Fatalf("DialUDP failed: %v", err)
 	}
@@ -84,7 +87,7 @@ func main() {
 	}
 
 	pkt := request.Marshal(false)
-	n, err := conn.Write(pkt)
+	n, err := udpConn.Write(pkt)
 	if err != nil {
 		log.Fatalf("unable to write to UDP socket: %v", err)
 	}
@@ -93,7 +96,7 @@ func main() {
 	}
 
 	log.Println("waiting for fastd handshake reply")
-	reply := waitForPacket(conn, cfg.timeout)
+	reply := waitForPacket(cfg.timeout)
 
 	if verbose {
 		log.Println("received payload:", reply.Records)
@@ -152,8 +155,6 @@ func main() {
 		log.Fatal("invalid signature")
 	}
 
-	tunnel.Configure(nil, nil, uint16(cfg.MTU))
-
 	// create handshake finish 0x03
 	finish := reply.NewReply()
 	finish.Records.
@@ -161,24 +162,77 @@ func main() {
 		SetRecipientKey(peerKey).
 		SetSenderHandshakeKey(hsKey.Public()).
 		SetRecipientHandshakeKey(senderHSKey).
-		SetMTU(uint16(cfg.MTU)).
+		SetMTU(cfg.MTU).
 		SetMethodName("null")
 
 	finish.SignKey = hs.SharedKey()
 
-	conn.Write(finish.Marshal(false))
+	udpConn.Write(finish.Marshal(false))
+
+	tunnel.Configure(
+		cfg.MTU,
+		&net.IPNet{IP: local4, Mask: net.CIDRMask(int(prefix4), 32)},
+		&net.IPNet{IP: local6, Mask: net.CIDRMask(int(prefix6), 128)},
+	)
+
+	go tunnelToUDP()
+	go udpToTunnel()
 
 	ch := make(chan os.Signal)
 	signal.Notify(ch, syscall.SIGINT, syscall.SIGTERM)
 	log.Printf("[interrupt received] %s", <-ch)
 }
 
-func waitForPacket(conn *net.UDPConn, timeout time.Duration) *fastd.Message {
+// from fastd tunnel to UDP
+func tunnelToUDP() {
+	var buf [1500]byte
+	buf[0] = byte(fastd.TypeData)
+	for {
+		n, err := tunnel.Read(buf[1:])
+		if err != nil {
+			log.Println(err)
+			continue
+		}
+		if verbose {
+			log.Printf("got %d bytes from Tunnel", n)
+		}
+
+		_, err = udpConn.Write(buf[:n+1])
+		if err != nil {
+			log.Println(err)
+		}
+	}
+}
+
+// from UDP to fastd tunnel
+func udpToTunnel() {
+	// disable timeout
+	udpConn.SetReadDeadline(time.Time{})
+
+	var buf [1500]byte
+	for {
+		n, _, err := udpConn.ReadFromUDP(buf[:])
+		if err != nil {
+			log.Println(err)
+			continue
+		}
+		if verbose {
+			log.Printf("got %d bytes from UDP", n)
+		}
+
+		_, err = tunnel.Write(buf[1 : n+1])
+		if err != nil {
+			log.Println(err)
+		}
+	}
+}
+
+func waitForPacket(timeout time.Duration) *fastd.Message {
 	buf := make([]byte, 1500)
 
-	conn.SetReadDeadline(time.Now().Add(timeout))
+	udpConn.SetReadDeadline(time.Now().Add(timeout))
 	for {
-		n, _, err := conn.ReadFromUDP(buf)
+		n, _, err := udpConn.ReadFromUDP(buf)
 		if verbose {
 			log.Printf("got %d bytes", n)
 		}

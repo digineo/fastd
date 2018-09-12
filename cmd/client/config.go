@@ -13,7 +13,7 @@ type config struct {
 	RemoteAddr string `json:"remote_addr"`
 	RemoteKey  string `json:"remote_key"`
 	Secret     string `json:"secret"`
-	MTU        int    `json:"mtu"`
+	MTU        uint16 `json:"mtu"`
 
 	ConnTimeout string `json:"connect_timeout"`
 	timeout     time.Duration

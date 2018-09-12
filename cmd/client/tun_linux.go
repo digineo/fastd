@@ -23,14 +23,28 @@ func (tun *linuxTunIface) Name() string {
 	return tun.iface.Name()
 }
 
-func (tun *linuxTunIface) Configure(local, remote net.IP, mtu uint16) error {
+func (tun *linuxTunIface) Configure(mtu uint16, addresses ...*net.IPNet) error {
 	link, err := netlink.LinkByName(tun.iface.Name())
 	if err != nil {
 		return err
 	}
 
+	for _, address := range addresses {
+		netlink.AddrReplace(link, &netlink.Addr{IPNet: address})
+	}
+
 	netlink.LinkSetMTU(link, int(mtu))
+	netlink.LinkSetUp(link)
+
 	return nil // fmt.Errorf("not implemented yet")
+}
+
+func (tun *linuxTunIface) Read(p []byte) (n int, err error) {
+	return tun.iface.Read(p)
+}
+
+func (tun *linuxTunIface) Write(p []byte) (n int, err error) {
+	return tun.iface.Write(p)
 }
 
 func newTunDevice() (Interface, error) {
