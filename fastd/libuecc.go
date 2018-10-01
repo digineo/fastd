@@ -43,19 +43,24 @@ const (
 
 // KeyPair keeps the secret and public key
 type KeyPair struct {
-	secret [KEYSIZE]byte
+	secret [KEYSIZE]byte // the optimized secret
 	public [KEYSIZE]byte
 }
 
-// RandomKeypair generates a random keypair
-func RandomKeypair() (keys *KeyPair) {
+// RandomSecret generates a new secret
+func RandomSecret() []byte {
 	var eccSecret C.ecc_int256_t
 	if _, err := rand.Read(eccSecret[:]); err != nil {
 		panic(err)
 	}
 
 	C.ecc_25519_gf_sanitize_secret(&eccSecret, &eccSecret)
-	return NewKeyPair(eccSecret[:])
+	return eccSecret[:]
+}
+
+// RandomKeypair generates a random keypair
+func RandomKeypair() *KeyPair {
+	return NewKeyPair(RandomSecret())
 }
 
 // NewKeyPair generates a keypair from the given secret
@@ -84,8 +89,9 @@ func (keys *KeyPair) derivePublic() {
 	C.ecc_25519_store_packed_legacy(&eccPublic, &eccWork)
 	copy(keys.public[:], eccPublic[:])
 
-	// Divide private key
+	// Divide the secret key by 8 (for some optimizations)
 	C.divide_key(&eccSecret)
+
 	copy(keys.secret[:], eccSecret[:])
 }
 
