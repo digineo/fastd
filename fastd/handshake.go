@@ -2,7 +2,6 @@ package fastd
 
 import (
 	"bytes"
-	"encoding/hex"
 	"fmt"
 	"log"
 	"reflect"
@@ -48,7 +47,7 @@ func newHandshake(initiator bool, ourKey, ourHandshakeKey *KeyPair, peerPublicKe
 
 // SharedKey returns a copy of the shared key.
 func (hs *Handshake) SharedKey() []byte {
-	res := make([]byte, len(hs.sharedKey), len(hs.sharedKey))
+	res := make([]byte, len(hs.sharedKey))
 	copy(res, hs.sharedKey)
 	return res
 }
@@ -77,8 +76,8 @@ func (srv *Server) handlePacket(msg *Message) (reply *Message) {
 		return
 	}
 
-	log.Printf("%v received handshake type=%x version=%s hostname=%s pubkey=%s",
-		msg.Src, handshakeType, records[RecordVersionName], records[RecordHostname], hex.EncodeToString(senderKey))
+	log.Printf("%v received handshake type=%x version=%s hostname=%s pubkey=%x",
+		msg.Src, handshakeType, records[RecordVersionName], records[RecordHostname], senderKey)
 
 	if reflect.DeepEqual(msg.Src, msg.Dst) {
 		log.Printf("%v source address equals destination address", msg.Src)
@@ -94,7 +93,7 @@ func (srv *Server) handlePacket(msg *Message) (reply *Message) {
 	}
 
 	if !bytes.Equal(recipientKey, srv.config.serverKeys.public[:]) {
-		log.Printf("%v recipient key invalid: %s", msg.Src, hex.EncodeToString(recipientKey))
+		log.Printf("%v recipient key invalid: %x", msg.Src, recipientKey)
 		reply.SetError(ReplyUnacceptableValue, RecordRecipientKey)
 		return
 	}
@@ -116,7 +115,7 @@ func (srv *Server) handlePacket(msg *Message) (reply *Message) {
 	if peer.PublicKey == nil {
 		peer.PublicKey = senderKey
 	} else if !bytes.Equal(peer.PublicKey, senderKey) {
-		log.Printf("%v peer changed public key old=%s new=%s", msg.Src, hex.EncodeToString(peer.PublicKey), hex.EncodeToString(senderKey))
+		log.Printf("%v peer changed public key old=%x new=%x", msg.Src, peer.PublicKey, senderKey)
 		return nil
 	}
 
