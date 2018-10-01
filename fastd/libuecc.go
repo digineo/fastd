@@ -80,7 +80,7 @@ func (keys *KeyPair) derivePublic() {
 
 	copy(eccSecret[:], keys.secret[:])
 
-	C.ecc_25519_scalarmult(&eccWork, &eccSecret, &C.ecc_25519_work_default_base)
+	C.ecc_25519_scalarmult_base(&eccWork, &eccSecret)
 	C.ecc_25519_store_packed_legacy(&eccPublic, &eccWork)
 	copy(keys.public[:], eccPublic[:])
 
