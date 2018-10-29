@@ -27,6 +27,16 @@ func TestNewKeyPair(t *testing.T) {
 	assert.Equal(public, hex.EncodeToString(keys.public[:]))
 }
 
+func TestInvalidKeys(t *testing.T) {
+	assert.PanicsWithValue(t, "invalid private key size (4 bytes)", func() {
+		DecodeKeyPair("deadbeef")
+	})
+
+	assert.PanicsWithValue(t, "invalid private key", func() {
+		DecodeKeyPair("fe00000000000000000000000000000000000000000000000000000000000000")
+	})
+}
+
 func TestMakeRespondingSharedHandshakeKey(t *testing.T) {
 	assert := assert.New(t)
 	peerKey := MustDecodeHex("83369beddca777585167520fb54a7fb059102bf4e0a46dd5fb1c633d83db77a2")

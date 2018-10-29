@@ -5,21 +5,6 @@ package fastd
 #include <unistd.h>
 #include <libuecc/ecc.h>
 
-// Divides a secret key by 8
-// returns 0 on success
-static int divide_key(ecc_int256_t *key) {
-	uint8_t c = 0, c2;
-	ssize_t i;
-
-	for (i = 31; i >= 0; i--) {
-		c2 = key->p[i] << 5;
-		key->p[i] = (key->p[i] >> 3) | c;
-		c = c2;
-	}
-
-	return c;
-}
-
 // Multiplies a point by 8
 static void octuple_point(ecc_25519_work_t *p) {
 	ecc_25519_work_t work;
@@ -34,6 +19,7 @@ import (
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
+	"fmt"
 )
 
 const (
@@ -66,8 +52,19 @@ func RandomKeypair() *KeyPair {
 // NewKeyPair generates a keypair from the given secret
 func NewKeyPair(secret []byte) *KeyPair {
 	keys := &KeyPair{}
+
+	if size := len(secret); size != KEYSIZE {
+		panic(fmt.Sprintf("invalid private key size (%d bytes)", size))
+	}
+
 	copy(keys.secret[:], secret)
 	keys.derivePublic()
+
+	// Divide the secret key by 8 (for some optimizations)
+	if !divideKey(&keys.secret) {
+		panic("invalid private key")
+	}
+
 	return keys
 }
 
@@ -84,15 +81,22 @@ func (keys *KeyPair) derivePublic() {
 	var eccSecret, eccPublic C.ecc_int256_t
 
 	copy(eccSecret[:], keys.secret[:])
-
 	C.ecc_25519_scalarmult_base(&eccWork, &eccSecret)
 	C.ecc_25519_store_packed_legacy(&eccPublic, &eccWork)
 	copy(keys.public[:], eccPublic[:])
+}
 
-	// Divide the secret key by 8 (for some optimizations)
-	C.divide_key(&eccSecret)
+// divides the key by 8
+func divideKey(key *[KEYSIZE]byte) bool {
+	var c byte
 
-	copy(keys.secret[:], eccSecret[:])
+	for i := KEYSIZE - 1; i >= 0; i-- {
+		c2 := key[i] << 5
+		key[i] = (key[i] >> 3) | c
+		c = c2
+	}
+
+	return c == 0
 }
 
 func unpackKey(key []byte) *C.ecc_25519_work_t {
