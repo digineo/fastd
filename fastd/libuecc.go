@@ -204,15 +204,6 @@ func (hs *Handshake) makeSharedKey(initiator bool, ourKey *KeyPair, peerKey []by
 }
 
 func deriveKey(A, B, X, Y, sigma []byte) []byte {
-	var info [4*KEYSIZE + 1]byte
-
-	// create info bytes
-	copy(info[:], A)
-	copy(info[KEYSIZE:], B)
-	copy(info[2*KEYSIZE:], X)
-	copy(info[3*KEYSIZE:], Y)
-	info[len(info)-1] = 0x01
-
 	// extract
 	extractor := hmac.New(sha256.New, nil)
 	extractor.Write(sigma)
@@ -220,7 +211,11 @@ func deriveKey(A, B, X, Y, sigma []byte) []byte {
 
 	// expand
 	expander := hmac.New(sha256.New, prk)
-	expander.Write(info[:])
+	expander.Write(A)
+	expander.Write(B)
+	expander.Write(X)
+	expander.Write(Y)
+	expander.Write([]byte{0x01})
 
 	return expander.Sum(nil)
 }

@@ -82,3 +82,12 @@ func MustDecodeHex(str string) []byte {
 func DecodeKeyPair(str string) *KeyPair {
 	return NewKeyPair(MustDecodeHex(str))
 }
+
+func BenchmarkDeriveKey(b *testing.B) {
+	arg := MustDecodeHex("3bac2ada2fbfa1ea75b2cb214490d5d718f1bbe5b226184488c07cf1a551e8d9")
+
+	// run the Fib function b.N times
+	for n := 0; n < b.N; n++ {
+		deriveKey(arg, arg, arg, arg, arg)
+	}
+}
