@@ -99,6 +99,7 @@ func divideKey(key *[KEYSIZE]byte) bool {
 	return c == 0
 }
 
+// unpackKey loads a packed legacy key and returns nil in case of an invalid key.
 func unpackKey(key []byte) *C.ecc_25519_work_t {
 	var eccKey C.ecc_int256_t
 	var unpacked C.ecc_25519_work_t
@@ -116,8 +117,13 @@ func unpackKey(key []byte) *C.ecc_25519_work_t {
 }
 
 func (hs *Handshake) makeSharedKey(initiator bool, ourKey *KeyPair, peerKey []byte) bool {
+	eccPeerKey := unpackKey(peerKey)
+	if eccPeerKey == nil {
+		return false
+	}
+
 	workXY := unpackKey(hs.peerHandshakeKey)
-	if C.ecc_25519_is_identity(workXY) != 0 {
+	if workXY == nil || C.ecc_25519_is_identity(workXY) != 0 {
 		return false
 	}
 
@@ -150,7 +156,6 @@ func (hs *Handshake) makeSharedKey(initiator bool, ourKey *KeyPair, peerKey []by
 	d[15] |= 0x80
 	e[15] |= 0x80
 
-	eccPeerKey := unpackKey(peerKey)
 	var work C.ecc_25519_work_t
 	var eccOurKeySecret, eccHandshakeKeySecret, eccSigma C.ecc_int256_t
 

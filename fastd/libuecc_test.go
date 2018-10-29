@@ -63,6 +63,14 @@ func TestMakeInitiatingSharedHandshakeKey(t *testing.T) {
 	assert.Equal("d5d652897baf38d7947921e167288a0fb2e8c32edb5f9efd56e34aa574d5fac9", hex.EncodeToString(hs.sharedKey))
 }
 
+func TestInvalidPeerKey(t *testing.T) {
+	assert := assert.New(t)
+	hs := &Handshake{}
+
+	assert.False(hs.makeSharedKey(true, testClientSecret, MustDecodeHex("0000000000000000000000000000000000000000000000000000000000000080")))
+	assert.Nil(hs.sharedKey)
+}
+
 func MustDecodeHex(str string) []byte {
 	decoded, err := hex.DecodeString(str)
 	if err != nil {
