@@ -3,7 +3,6 @@ package fastd
 import (
 	"bytes"
 	"fmt"
-	"log"
 	"reflect"
 	"time"
 
@@ -56,56 +55,56 @@ func (srv *Server) handlePacket(msg *Message) (reply *Message) {
 	records := msg.Records
 	handshakeType, err := records.HandshakeType()
 	if err != nil {
-		log.Printf("%v handshake type missing", msg.Src)
+		logger.Errorf("%v handshake type missing", msg.Src)
 		return
 	}
 
 	senderKey, err := records.SenderKey()
 	if err != nil {
-		log.Printf("%v sender key missing", msg.Src)
+		logger.Errorf("%v sender key missing", msg.Src)
 		return
 	}
 	recipientKey, err := records.RecipientKey()
 	if err != nil {
-		log.Printf("%v recipient key missing", msg.Src)
+		logger.Errorf("%v recipient key missing", msg.Src)
 		return
 	}
 	senderHandshakeKey, err := records.SenderHandshakeKey()
 	if err != nil {
-		log.Printf("%v sender handshake type missing", msg.Src)
+		logger.Errorf("%v sender handshake type missing", msg.Src)
 		return
 	}
 
-	log.Printf("%v received handshake type=%x version=%s hostname=%s pubkey=%x",
+	logger.Infof("%v received handshake type=%x version=%s hostname=%s pubkey=%x",
 		msg.Src, handshakeType, records[RecordVersionName], records[RecordHostname], senderKey)
 
 	if reflect.DeepEqual(msg.Src, msg.Dst) {
-		log.Printf("%v source address equals destination address", msg.Src)
+		logger.Errorf("%v source address equals destination address", msg.Src)
 		return
 	}
 
 	reply = msg.NewReply()
 
 	if recipientKey == nil {
-		log.Printf("%v recipient key missing", msg.Src)
+		logger.Errorf("%v recipient key missing", msg.Src)
 		reply.SetError(ReplyRecordMissing, RecordRecipientKey)
 		return
 	}
 
 	if !bytes.Equal(recipientKey, srv.config.serverKeys.public[:]) {
-		log.Printf("%v recipient key invalid: %x", msg.Src, recipientKey)
+		logger.Errorf("%v recipient key invalid: %x", msg.Src, recipientKey)
 		reply.SetError(ReplyUnacceptableValue, RecordRecipientKey)
 		return
 	}
 
 	if senderKey == nil {
-		log.Printf("%v sender key missing", msg.Src)
+		logger.Errorf("%v sender key missing", msg.Src)
 		reply.SetError(ReplyRecordMissing, RecordSenderKey)
 		return
 	}
 
 	if senderHandshakeKey == nil {
-		log.Printf("%v sender handshake key missing", msg.Src)
+		logger.Errorf("%v sender handshake key missing", msg.Src)
 		reply.SetError(ReplyRecordMissing, RecordSenderHandshakeKey)
 		return
 	}
@@ -115,7 +114,7 @@ func (srv *Server) handlePacket(msg *Message) (reply *Message) {
 	if peer.PublicKey == nil {
 		peer.PublicKey = senderKey
 	} else if !bytes.Equal(peer.PublicKey, senderKey) {
-		log.Printf("%v peer changed public key old=%x new=%x", msg.Src, peer.PublicKey, senderKey)
+		logger.Errorf("%v peer changed public key old=%x new=%x", msg.Src, peer.PublicKey, senderKey)
 		return nil
 	}
 
@@ -125,12 +124,12 @@ func (srv *Server) handlePacket(msg *Message) (reply *Message) {
 	if handshakeType == HandshakeRequest {
 		hs = NewRespondingHandshake(srv.config.serverKeys, senderKey, senderHandshakeKey)
 		if hs == nil {
-			log.Printf("%v unable to make shared handshake key", msg.Src)
+			logger.Errorf("%v unable to make shared handshake key", msg.Src)
 			return nil
 		}
 		peer.handshake = hs
 	} else if hs == nil {
-		log.Printf("%v no handshake started", msg.Src)
+		logger.Errorf("%v no handshake started", msg.Src)
 		return nil
 	}
 
@@ -152,7 +151,7 @@ func (srv *Server) handlePacket(msg *Message) (reply *Message) {
 	switch handshakeType {
 	case HandshakeRequest:
 		if err := srv.verifyPeer(peer); err != nil {
-			log.Printf("%v verify failed: %s", msg.Src, err)
+			logger.Errorf("%v verify failed: %s", msg.Src, err)
 			return nil
 		}
 
@@ -162,7 +161,7 @@ func (srv *Server) handlePacket(msg *Message) (reply *Message) {
 			peer.Ifname, err = Clone(msg.Src, senderKey)
 
 			if err != nil {
-				log.Printf("%v cloning failed: %s", msg.Src, err)
+				logger.Errorf("%v cloning failed: %s", msg.Src, err)
 				return nil
 			}
 		}
@@ -190,11 +189,11 @@ func (srv *Server) handlePacket(msg *Message) (reply *Message) {
 	case HandshakeFinish:
 		msg.SignKey = hs.sharedKey
 		if err := srv.handleFinishHandshake(msg, reply, peer); err != nil {
-			log.Printf("%v handshake failed: %s", msg.Src, err)
+			logger.Errorf("%v handshake failed: %s", msg.Src, err)
 			return nil
 		}
 	default:
-		log.Printf("%v unsupported handshake type", msg.Src)
+		logger.Errorf("%v unsupported handshake type", msg.Src)
 	}
 
 	return
@@ -229,7 +228,7 @@ func (srv *Server) handleFinishHandshake(msg *Message, reply *Message, peer *Pee
 		return fmt.Errorf("%v MTU invalid: %d", msg.Src, mtu)
 	}
 	if err := ifconfig.SetMTU(peer.Ifname, mtu); err != nil {
-		log.Printf("%v unable to set MTU to %d: %s", msg.Src, mtu, err)
+		logger.Errorf("%v unable to set MTU to %d: %s", msg.Src, mtu, err)
 	} else {
 		peer.MTU = mtu
 	}

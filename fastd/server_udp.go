@@ -2,7 +2,6 @@ package fastd
 
 import (
 	"fmt"
-	"log"
 	"net"
 	"sync"
 )
@@ -32,7 +31,7 @@ func NewUDPServer(addresses []Sockaddr) (ServerImpl, error) {
 			Port: int(sa.Port),
 		}
 
-		log.Printf("Listening on %s, Port %d", addr.IP.String(), addr.Port)
+		logger.Infof("Listening on %s, Port %d", addr.IP.String(), addr.Port)
 
 		conn, err := net.ListenUDP("udp", &addr)
 		if err != nil {
@@ -116,7 +115,7 @@ func (srv *UDPServer) findConn(addr Sockaddr) *net.UDPConn {
 func (srv *UDPServer) Write(msg *Message) error {
 	conn := srv.findConn(msg.Src)
 	if conn == nil {
-		log.Println("unable to find connection with local address", msg.Src)
+		logger.Errorf("unable to find connection with local address", msg.Src)
 		return fmt.Errorf("no local connection with address %v", msg.Src)
 	}
 

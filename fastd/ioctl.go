@@ -1,9 +1,6 @@
 package fastd
 
-import (
-	"log"
-	"syscall"
-)
+import "syscall"
 
 // nolint: golint
 var (
@@ -16,7 +13,7 @@ var (
 func Ioctl(fd, cmd, ptr uintptr) error {
 	_, _, e := syscall.Syscall(syscall.SYS_IOCTL, fd, cmd, ptr)
 	if e != 0 {
-		log.Printf("errno=%d %s", int(e), e)
+		logger.Errorf("errno=%d %s", int(e), e)
 		return e
 	}
 	return nil
