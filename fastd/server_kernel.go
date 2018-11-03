@@ -3,7 +3,6 @@ package fastd
 import (
 	"fmt"
 	"io"
-	"log"
 	"net"
 	"os"
 	"strings"
@@ -49,7 +48,7 @@ func NewKernelServer(addresses []Sockaddr) (ServerImpl, error) {
 			return nil, errors.Wrapf(err, "binding to %v failed", address)
 		}
 
-		log.Printf("listening on %s, Port %d", address.IP.String(), address.Port)
+		logger.Infof("listening on %s, Port %d", address.IP.String(), address.Port)
 		srv.addresses = append(srv.addresses, address)
 	}
 
@@ -93,7 +92,7 @@ func (srv *KernelServer) Close() {
 func (srv *KernelServer) Peers() (peers []*Peer) {
 	ifaces, err := net.Interfaces()
 	if err != nil {
-		log.Println("failed to load interfaces:", err)
+		logger.Errorf("failed to load interfaces:", err)
 		return
 	}
 	for _, iface := range ifaces {
@@ -105,9 +104,9 @@ func (srv *KernelServer) Peers() (peers []*Peer) {
 					Remote:    remote,
 					PublicKey: pubkey,
 				})
-				log.Printf("loaded existing session: iface=%s remote=%v pubkey=%x", iface.Name, remote, pubkey)
+				logger.Infof("loaded existing session: iface=%s remote=%v pubkey=%x", iface.Name, remote, pubkey)
 			} else {
-				log.Printf("failed to load session: iface=%s", iface.Name)
+				logger.Errorf("failed to load session: iface=%s", iface.Name)
 			}
 		}
 	}
@@ -130,7 +129,7 @@ func (srv *KernelServer) readPackets() error {
 			data := make([]byte, n)
 			copy(data, buf[:n])
 			if err = srv.read(data); err != nil {
-				log.Println(err)
+				logger.Errorf("%v", err)
 			}
 		case io.EOF:
 			num, e := unix.Poll(pollFds, 60*1000)

@@ -1,7 +1,6 @@
 package fastd
 
 import (
-	"log"
 	"net"
 	"time"
 
@@ -139,6 +138,6 @@ func (config *AddressConfig) Assign(ifname string) {
 		return
 	}
 	if err := SetAddrPTP(ifname, config.LocalAddr, config.DestAddr); err != nil {
-		log.Printf("Setting addresses for %s failed: %s", ifname, err)
+		logger.Errorf("Setting addresses for %s failed: %s", ifname, err)
 	}
 }

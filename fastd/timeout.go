@@ -1,9 +1,6 @@
 package fastd
 
-import (
-	"log"
-	"time"
-)
+import "time"
 
 const (
 	peerCheckInterval = 15 * time.Second
@@ -39,7 +36,7 @@ func (srv *Server) timeoutPeers() {
 
 	for _, peer := range srv.peers {
 		if peer.hasTimeout(now, srv.config.Timeout) {
-			log.Printf("%v timed out ifname=%s", peer.Remote, peer.Ifname)
+			logger.Infof("%v timed out ifname=%s", peer.Remote, peer.Ifname)
 			srv.removePeerLocked(peer)
 
 			if f := srv.config.OnTimeout; f != nil {
@@ -53,7 +50,7 @@ func (srv *Server) timeoutPeers() {
 func (peer *Peer) updateCounter(now time.Time) bool {
 	stats, err := GetStats(peer.Ifname)
 	if err != nil {
-		log.Printf("Unable to get stats for %s: %s", peer.Ifname, err)
+		logger.Errorf("Unable to get stats for %s: %v", peer.Ifname, err)
 		return false
 	}
 

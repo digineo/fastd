@@ -2,7 +2,6 @@ package fastd
 
 import (
 	"fmt"
-	"log"
 	"sync"
 	"time"
 
@@ -66,7 +65,7 @@ func NewServer(implName string, config *Config) (srv *Server, err error) {
 			srv.addPeer(peer)
 		} else {
 			// session not established
-			log.Println("destroying unestablished session", peer.Ifname)
+			logger.Infof("destroying unestablished session: %s", peer.Ifname)
 			ifconfig.Destroy(peer.Ifname)
 		}
 	}
