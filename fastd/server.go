@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/digineo/fastd/ifconfig"
+	log "github.com/digineo/go-logwrap"
 )
 
 // Server is a fastd server.
@@ -65,7 +66,7 @@ func NewServer(implName string, config *Config) (srv *Server, err error) {
 			srv.addPeer(peer)
 		} else {
 			// session not established
-			logger.Infof("destroying unestablished session: %s", peer.Ifname)
+			log.Infof("destroying unestablished session: %s", peer.Ifname)
 			ifconfig.Destroy(peer.Ifname)
 		}
 	}

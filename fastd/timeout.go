@@ -1,6 +1,10 @@
 package fastd
 
-import "time"
+import (
+	"time"
+
+	log "github.com/digineo/go-logwrap"
+)
 
 const (
 	peerCheckInterval = 15 * time.Second
@@ -36,7 +40,7 @@ func (srv *Server) timeoutPeers() {
 
 	for _, peer := range srv.peers {
 		if peer.hasTimeout(now, srv.config.Timeout) {
-			logger.Infof("%v timed out ifname=%s", peer.Remote, peer.Ifname)
+			log.Infof("%v timed out ifname=%s", peer.Remote, peer.Ifname)
 			srv.removePeerLocked(peer)
 
 			if f := srv.config.OnTimeout; f != nil {
@@ -50,7 +54,7 @@ func (srv *Server) timeoutPeers() {
 func (peer *Peer) updateCounter(now time.Time) bool {
 	stats, err := GetStats(peer.Ifname)
 	if err != nil {
-		logger.Errorf("Unable to get stats for %s: %v", peer.Ifname, err)
+		log.Errorf("Unable to get stats for %s: %v", peer.Ifname, err)
 		return false
 	}
 

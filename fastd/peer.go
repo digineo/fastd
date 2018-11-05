@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/digineo/fastd/ifconfig"
+	log "github.com/digineo/go-logwrap"
 )
 
 // AddressConfig contains the local and remote PTP address
@@ -138,6 +139,6 @@ func (config *AddressConfig) Assign(ifname string) {
 		return
 	}
 	if err := SetAddrPTP(ifname, config.LocalAddr, config.DestAddr); err != nil {
-		logger.Errorf("Setting addresses for %s failed: %s", ifname, err)
+		log.Errorf("Setting addresses for %s failed: %s", ifname, err)
 	}
 }
