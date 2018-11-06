@@ -1,10 +1,6 @@
 package fastd
 
-import (
-	"syscall"
-
-	log "github.com/digineo/go-logwrap"
-)
+import "syscall"
 
 // nolint: golint
 var (

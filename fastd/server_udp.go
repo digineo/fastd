@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"net"
 	"sync"
-
-	log "github.com/digineo/go-logwrap"
 )
 
 // UDPServer is a userspace stub of the fastd server

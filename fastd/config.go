@@ -5,7 +5,13 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/digineo/go-logwrap"
 	"github.com/pkg/errors"
+)
+
+var (
+	log       = &logwrap.Instance{}
+	SetLogger = log.SetLogger
 )
 
 // Config is the configuration of a fastd server instance

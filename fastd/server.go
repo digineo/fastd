@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/digineo/fastd/ifconfig"
-	log "github.com/digineo/go-logwrap"
 )
 
 // Server is a fastd server.

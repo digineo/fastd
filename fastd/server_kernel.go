@@ -10,7 +10,6 @@ import (
 	"time"
 	"unsafe"
 
-	log "github.com/digineo/go-logwrap"
 	"github.com/pkg/errors"
 	"golang.org/x/sys/unix"
 )

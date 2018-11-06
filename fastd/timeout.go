@@ -1,14 +1,8 @@
 package fastd
 
-import (
-	"time"
+import "time"
 
-	log "github.com/digineo/go-logwrap"
-)
-
-const (
-	peerCheckInterval = 15 * time.Second
-)
+const peerCheckInterval = 15 * time.Second
 
 func (srv *Server) startTimeouter() {
 	srv.wg.Add(1)

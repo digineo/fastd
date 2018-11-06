@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/digineo/fastd/ifconfig"
-	log "github.com/digineo/go-logwrap"
 )
 
 // MinMTU is the minimal usable MTU, all clients are required to

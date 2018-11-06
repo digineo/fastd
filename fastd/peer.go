@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/digineo/fastd/ifconfig"
-	log "github.com/digineo/go-logwrap"
 )
 
 // AddressConfig contains the local and remote PTP address
