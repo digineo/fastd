@@ -29,6 +29,5 @@ To create a debug build:
 
 ### Daemon
 
-    pkg install go pkgconf libuecc
     go get github.com/digineo/fastd
     go install github.com/digineo/fastd

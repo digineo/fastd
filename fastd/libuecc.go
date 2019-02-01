@@ -1,26 +1,23 @@
 package fastd
 
-/*
-#cgo pkg-config: libuecc
-#include <unistd.h>
-#include <libuecc/ecc.h>
-
-// Multiplies a point by 8
-static void octuple_point(ecc_25519_work_t *p) {
-	ecc_25519_work_t work;
-	ecc_25519_double(&work, p);
-	ecc_25519_double(&work, &work);
-	ecc_25519_double(p, &work);
-}
-*/
-import "C"
-
 import (
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
 	"fmt"
+
+	"github.com/digineo/go-libuecc"
 )
+
+/*
+By multiplying with 8, we prevent small-subgroup attacks (8 is the order
+of the curves twist, see djb's Curve25519 paper). While the factor 8 should
+be in the private keys anyways, the reduction modulo the subgroup order (in ecc_25519_gf_*)
+will only preserve it if the point actually lies on our subgroup.
+*/
+func octuplePoint(p *libuecc.Point) *libuecc.Point {
+	return p.Double().Double().Double()
+}
 
 const (
 	// KEYSIZE is the length of a public/private key in bytes
@@ -29,39 +26,40 @@ const (
 
 // KeyPair keeps the secret and public key
 type KeyPair struct {
-	secret [KEYSIZE]byte // the optimized secret
-	public [KEYSIZE]byte
+	secret *libuecc.Int256 // the optimized secret
+	public *libuecc.Int256
 }
 
 // RandomSecret generates a new secret
-func RandomSecret() []byte {
-	var eccSecret C.ecc_int256_t
-	if _, err := rand.Read(eccSecret[:]); err != nil {
+func RandomSecret() *libuecc.Int256 {
+	buf := make([]byte, KEYSIZE)
+	if _, err := rand.Read(buf); err != nil {
 		panic(err)
 	}
 
-	C.ecc_25519_gf_sanitize_secret(&eccSecret, &eccSecret)
-	return eccSecret[:]
+	return libuecc.NewInt256(buf).SanitizeSecret()
 }
 
 // RandomKeypair generates a random keypair
 func RandomKeypair() *KeyPair {
-	return NewKeyPair(RandomSecret())
+	return keyPairFromSecret(RandomSecret())
 }
 
 // NewKeyPair generates a keypair from the given secret
 func NewKeyPair(secret []byte) *KeyPair {
-	keys := &KeyPair{}
-
 	if size := len(secret); size != KEYSIZE {
 		panic(fmt.Sprintf("invalid private key size (%d bytes)", size))
 	}
 
-	copy(keys.secret[:], secret)
+	return keyPairFromSecret(libuecc.NewInt256(secret))
+}
+
+func keyPairFromSecret(secret *libuecc.Int256) *KeyPair {
+	keys := &KeyPair{secret: secret}
 	keys.derivePublic()
 
 	// Divide the secret key by 8 (for some optimizations)
-	if !divideKey(&keys.secret) {
+	if !divideKey(keys.secret) {
 		panic("invalid private key")
 	}
 
@@ -70,24 +68,11 @@ func NewKeyPair(secret []byte) *KeyPair {
 
 // Public returns a copy of the public key.
 func (keys *KeyPair) Public() []byte {
-	res := make([]byte, KEYSIZE, KEYSIZE)
-	copy(res, keys.public[:])
-	return res
-}
-
-// Derives the public key from the private key and stores it
-func (keys *KeyPair) derivePublic() {
-	var eccWork C.ecc_25519_work_t
-	var eccSecret, eccPublic C.ecc_int256_t
-
-	copy(eccSecret[:], keys.secret[:])
-	C.ecc_25519_scalarmult_base(&eccWork, &eccSecret)
-	C.ecc_25519_store_packed_legacy(&eccPublic, &eccWork)
-	copy(keys.public[:], eccPublic[:])
+	return keys.public.Bytes()
 }
 
 // divides the key by 8
-func divideKey(key *[KEYSIZE]byte) bool {
+func divideKey(key *libuecc.Int256) bool {
 	var c byte
 
 	for i := KEYSIZE - 1; i >= 0; i-- {
@@ -99,21 +84,21 @@ func divideKey(key *[KEYSIZE]byte) bool {
 	return c == 0
 }
 
+// Derives the public key from the private key and stores it
+func (keys *KeyPair) derivePublic() {
+	temp := libuecc.PointBaseLegacy()
+	work := temp.ScalarMult(keys.secret)
+
+	keys.public = work.StorePackedLegacy()
+}
+
 // unpackKey loads a packed legacy key and returns nil in case of an invalid key.
-func unpackKey(key []byte) *C.ecc_25519_work_t {
-	var eccKey C.ecc_int256_t
-	var unpacked C.ecc_25519_work_t
-
-	copy(eccKey[:], key)
-	if C.ecc_25519_load_packed_legacy(&unpacked, &eccKey) != 1 {
+func unpackKey(key []byte) *libuecc.Point {
+	unpacked := libuecc.NewInt256(key).LoadPackedLegacy()
+	if unpacked == nil || unpacked.IsIdentity() {
 		return nil
 	}
-
-	if C.ecc_25519_is_identity(&unpacked) != 0 {
-		return nil
-	}
-
-	return &unpacked
+	return unpacked
 }
 
 func (hs *Handshake) makeSharedKey(initiator bool, ourKey *KeyPair, peerKey []byte) bool {
@@ -123,22 +108,22 @@ func (hs *Handshake) makeSharedKey(initiator bool, ourKey *KeyPair, peerKey []by
 	}
 
 	workXY := unpackKey(hs.peerHandshakeKey)
-	if workXY == nil || C.ecc_25519_is_identity(workXY) != 0 {
+	if workXY == nil {
 		return false
 	}
 
 	var A, B, X, Y []byte
 
 	if initiator {
-		A = ourKey.public[:]
+		A = ourKey.public.Bytes()
 		B = peerKey
-		X = hs.ourHandshakeKey.public[:]
+		X = hs.ourHandshakeKey.public.Bytes()
 		Y = hs.peerHandshakeKey
 	} else {
 		A = peerKey
-		B = ourKey.public[:]
+		B = ourKey.public.Bytes()
 		X = hs.peerHandshakeKey
-		Y = hs.ourHandshakeKey.public[:]
+		Y = hs.ourHandshakeKey.public.Bytes()
 	}
 
 	hash := sha256.New()
@@ -147,7 +132,7 @@ func (hs *Handshake) makeSharedKey(initiator bool, ourKey *KeyPair, peerKey []by
 	hash.Write(B)
 	hash.Write(A)
 
-	var d, e, s C.ecc_int256_t
+	var d, e libuecc.Int256
 	hashSum := hash.Sum(nil)
 
 	copy(d[:], hashSum[:len(hashSum)/2])
@@ -156,46 +141,38 @@ func (hs *Handshake) makeSharedKey(initiator bool, ourKey *KeyPair, peerKey []by
 	d[15] |= 0x80
 	e[15] |= 0x80
 
-	var work C.ecc_25519_work_t
-	var eccOurKeySecret, eccHandshakeKeySecret, eccSigma C.ecc_int256_t
+	var work *libuecc.Point
+	var eccOurKeySecret, eccHandshakeKeySecret libuecc.Int256
 
 	copy(eccOurKeySecret[:], ourKey.secret[:])
 	copy(eccHandshakeKeySecret[:], hs.ourHandshakeKey.secret[:])
 
+	var s *libuecc.Int256
 	if initiator {
-		var da C.ecc_int256_t
-		C.ecc_25519_gf_mult(&da, &d, &eccOurKeySecret)
-		C.ecc_25519_gf_add(&s, &da, &eccHandshakeKeySecret)
-		C.ecc_25519_scalarmult_bits(&work, &e, eccPeerKey, 128)
+		da := d.GfMult(&eccOurKeySecret)
+		s = da.GfAdd(&eccHandshakeKeySecret)
+		work = eccPeerKey.ScalarMultBits(&e, 128)
 	} else {
-		var eb C.ecc_int256_t
-		C.ecc_25519_gf_mult(&eb, &e, &eccOurKeySecret)
-		C.ecc_25519_gf_add(&s, &eb, &eccHandshakeKeySecret)
-		C.ecc_25519_scalarmult_bits(&work, &d, eccPeerKey, 128)
+		eb := e.GfMult(&eccOurKeySecret)
+		s = eb.GfAdd(&eccHandshakeKeySecret)
+		work = eccPeerKey.ScalarMultBits(&d, 128)
 	}
-	C.ecc_25519_add(&work, workXY, &work)
+	work = workXY.Add(work)
 
 	/*
 	  Both our secret keys have been divided by 8 before, so we multiply
 	  the point with 8 here to compensate.
-
-	  By multiplying with 8, we prevent small-subgroup attacks (8 is the order
-	  of the curves twist, see djb's Curve25519 paper). While the factor 8 should
-	  be in the private keys anyways, the reduction modulo the subgroup order (in ecc_25519_gf_*)
-	  will only preserve it if the point actually lies on our subgroup.
 	*/
-	C.octuple_point(&work)
+	work = octuplePoint(work)
+	work = work.ScalarMult(s)
 
-	C.ecc_25519_scalarmult(&work, &s, &work)
-
-	if C.ecc_25519_is_identity(&work) != 0 {
+	if work.IsIdentity() {
 		return false
 	}
 
 	// Store sigma
-	C.ecc_25519_store_packed_legacy(&eccSigma, &work)
-	var sigma [KEYSIZE]byte
-	copy(sigma[:], eccSigma[:])
+	eccSigma := work.StorePackedLegacy()
+	sigma := eccSigma.Bytes()
 
 	// Derive shared key
 	hs.sharedKey = deriveKey(A, B, X, Y, sigma[:])
