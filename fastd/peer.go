@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/digineo/fastd/ifconfig"
+	"github.com/sirupsen/logrus"
 )
 
 // AddressConfig contains the local and remote PTP address
@@ -138,6 +139,9 @@ func (config *AddressConfig) Assign(ifname string) {
 		return
 	}
 	if err := SetAddrPTP(ifname, config.LocalAddr, config.DestAddr); err != nil {
-		log.Errorf("Setting addresses for %s failed: %s", ifname, err)
+		log.WithFields(logrus.Fields{
+			logrus.ErrorKey: err,
+			"ifname":        ifname,
+		}).Error("setting addresses failed")
 	}
 }

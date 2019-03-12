@@ -5,10 +5,13 @@ import (
 	"io"
 	"net"
 	"os"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
 	"unsafe"
+
+	"github.com/sirupsen/logrus"
 
 	"github.com/pkg/errors"
 	"golang.org/x/sys/unix"
@@ -48,7 +51,8 @@ func NewKernelServer(addresses []Sockaddr) (ServerImpl, error) {
 			return nil, errors.Wrapf(err, "binding to %v failed", address)
 		}
 
-		log.Infof("listening on %s, Port %d", address.IP.String(), address.Port)
+		bind := net.JoinHostPort(address.IP.String(), strconv.Itoa(int(address.Port)))
+		log.WithField("bind", bind).Info("start in-kernel server")
 		srv.addresses = append(srv.addresses, address)
 	}
 
@@ -92,22 +96,29 @@ func (srv *KernelServer) Close() {
 func (srv *KernelServer) Peers() (peers []*Peer) {
 	ifaces, err := net.Interfaces()
 	if err != nil {
-		log.Errorf("failed to load interfaces:", err)
+		log.WithError(err).Error("failed to load interfaces")
 		return
 	}
 	for _, iface := range ifaces {
 		if strings.HasPrefix(iface.Name, "fastd") {
 			remote, pubkey, err := GetRemote(iface.Name)
-			if err == nil {
-				peers = append(peers, &Peer{
-					Ifname:    iface.Name,
-					Remote:    remote,
-					PublicKey: pubkey,
-				})
-				log.Infof("loaded existing session: iface=%s remote=%v pubkey=%x", iface.Name, remote, pubkey)
-			} else {
-				log.Errorf("failed to load session: iface=%s", iface.Name)
+			if err != nil {
+				log.WithFields(logrus.Fields{
+					logrus.ErrorKey: err,
+					"iface":         iface.Name,
+				}).Error("failed to load session")
+				continue
 			}
+			peers = append(peers, &Peer{
+				Ifname:    iface.Name,
+				Remote:    remote,
+				PublicKey: pubkey,
+			})
+			log.WithFields(logrus.Fields{
+				"iface":  iface.Name,
+				"remote": remote,
+				"pubkey": fmt.Sprintf("%x", pubkey),
+			}).Info("loaded existing session")
 		}
 	}
 	return

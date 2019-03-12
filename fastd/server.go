@@ -65,19 +65,18 @@ func NewServer(implName string, config *Config) (srv *Server, err error) {
 			srv.addPeer(peer)
 		} else {
 			// session not established
-			log.Infof("destroying unestablished session: %s", peer.Ifname)
+			log.WithField("ifname", peer.Ifname).
+				Info("destroying unestablished session")
 			ifconfig.Destroy(peer.Ifname)
 		}
 	}
 
 	srv.startWorker()
-
 	if srv.config.Timeout > 0 {
 		srv.timeoutTicker = time.NewTicker(peerCheckInterval)
 		srv.timeoutStop = make(chan struct{})
 		srv.startTimeouter()
 	}
-
 	return
 }
 

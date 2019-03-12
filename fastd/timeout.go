@@ -1,6 +1,10 @@
 package fastd
 
-import "time"
+import (
+	"time"
+
+	"github.com/sirupsen/logrus"
+)
 
 const peerCheckInterval = 15 * time.Second
 
@@ -34,7 +38,10 @@ func (srv *Server) timeoutPeers() {
 
 	for _, peer := range srv.peers {
 		if peer.hasTimeout(now, srv.config.Timeout) {
-			log.Infof("%v timed out ifname=%s", peer.Remote, peer.Ifname)
+			log.WithFields(logrus.Fields{
+				"ifname": peer.Ifname,
+				"remote": peer.Remote.String(),
+			}).Info("timed out")
 			srv.removePeerLocked(peer)
 
 			if f := srv.config.OnTimeout; f != nil {
@@ -48,7 +55,10 @@ func (srv *Server) timeoutPeers() {
 func (peer *Peer) updateCounter(now time.Time) bool {
 	stats, err := GetStats(peer.Ifname)
 	if err != nil {
-		log.Errorf("Unable to get stats for %s: %v", peer.Ifname, err)
+		log.WithFields(logrus.Fields{
+			logrus.ErrorKey: err,
+			"ifname":        peer.Ifname,
+		}).Error("unable to get stats")
 		return false
 	}
 

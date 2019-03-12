@@ -1,6 +1,10 @@
 package fastd
 
-import "syscall"
+import (
+	"syscall"
+
+	"github.com/sirupsen/logrus"
+)
 
 // nolint: golint
 var (
@@ -13,7 +17,10 @@ var (
 func Ioctl(fd, cmd, ptr uintptr) error {
 	_, _, e := syscall.Syscall(syscall.SYS_IOCTL, fd, cmd, ptr)
 	if e != 0 {
-		log.Errorf("errno=%d %s", int(e), e)
+		log.WithFields(logrus.Fields{
+			logrus.ErrorKey: e,
+			"errno":         int(e),
+		}).Error("ioctl failed")
 		return e
 	}
 	return nil

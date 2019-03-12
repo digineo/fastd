@@ -5,13 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/digineo/go-logwrap"
 	"github.com/pkg/errors"
-)
-
-var (
-	log       = &logwrap.Instance{}
-	SetLogger = log.SetLogger
+	"github.com/sirupsen/logrus"
 )
 
 // Config is the configuration of a fastd server instance
@@ -24,6 +19,8 @@ type Config struct {
 	OnEstablished   func(*Peer)
 	OnTimeout       func(*Peer)
 }
+
+var log = logrus.WithField("prefix", "fastd")
 
 // SetServerKey sets the server's key
 func (c *Config) SetServerKey(secretHex string) error {

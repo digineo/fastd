@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/digineo/fastd/ifconfig"
+	"github.com/sirupsen/logrus"
 )
 
 // MinMTU is the minimal usable MTU, all clients are required to
@@ -52,69 +53,80 @@ func (hs *Handshake) SharedKey() []byte {
 }
 
 func (srv *Server) handlePacket(msg *Message) (reply *Message) {
+	llog := log.WithField("src", msg.Src.String())
+
 	records := msg.Records
 	handshakeType, err := records.HandshakeType()
 	if err != nil {
-		log.Errorf("%v handshake type missing", msg.Src)
+		llog.WithError(err).Error("handshake type missing")
 		return
 	}
 
 	senderKey, err := records.SenderKey()
 	if err != nil {
-		log.Errorf("%v sender key missing", msg.Src)
+		llog.WithError(err).Error("sender key missing")
 		return
 	}
 	recipientKey, err := records.RecipientKey()
 	if err != nil {
-		log.Errorf("%v recipient key missing", msg.Src)
+		llog.WithError(err).Error("recipient key missing")
 		return
 	}
 	senderHandshakeKey, err := records.SenderHandshakeKey()
 	if err != nil {
-		log.Errorf("%v sender handshake type missing", msg.Src)
+		llog.WithError(err).Error("sender handshake type missing")
 		return
 	}
 
-	log.Infof("%v received handshake type=%x version=%s hostname=%s pubkey=%x",
-		msg.Src, handshakeType, records[RecordVersionName], records[RecordHostname], senderKey)
+	llog = llog.WithFields(logrus.Fields{
+		"type":     fmt.Sprintf("0x%02x", handshakeType),
+		"version":  string(records[RecordVersionName]),
+		"hostname": string(records[RecordHostname]),
+		"pubkey":   fmt.Sprintf("%x", senderKey),
+	})
+	llog.Info("received handshake")
 
 	if reflect.DeepEqual(msg.Src, msg.Dst) {
-		log.Errorf("%v source address equals destination address", msg.Src)
+		llog.WithField("dst", msg.Dst.String()).
+			Error("source address equals destination address")
 		return
 	}
 
 	reply = msg.NewReply()
 
 	if recipientKey == nil {
-		log.Errorf("%v recipient key missing", msg.Src)
+		llog.Error("recipient key missing")
 		reply.SetError(ReplyRecordMissing, RecordRecipientKey)
 		return
 	}
 
 	if !bytes.Equal(recipientKey, srv.config.serverKeys.public[:]) {
-		log.Errorf("%v recipient key invalid: %x", msg.Src, recipientKey)
+		llog.WithField("rcptkey", fmt.Sprintf("%x", recipientKey)).
+			Error("recipient key invalid")
 		reply.SetError(ReplyUnacceptableValue, RecordRecipientKey)
 		return
 	}
 
 	if senderKey == nil {
-		log.Errorf("%v sender key missing", msg.Src)
+		llog.Error("sender key missing")
 		reply.SetError(ReplyRecordMissing, RecordSenderKey)
 		return
 	}
 
 	if senderHandshakeKey == nil {
-		log.Errorf("%v sender handshake key missing", msg.Src)
+		llog.Error("sender handshake key missing")
 		reply.SetError(ReplyRecordMissing, RecordSenderHandshakeKey)
 		return
 	}
 
 	peer := srv.GetPeer(msg.Src)
-
 	if peer.PublicKey == nil {
 		peer.PublicKey = senderKey
 	} else if !bytes.Equal(peer.PublicKey, senderKey) {
-		log.Errorf("%v peer changed public key old=%x new=%x", msg.Src, peer.PublicKey, senderKey)
+		llog.WithFields(logrus.Fields{
+			"old": fmt.Sprintf("%x", peer.PublicKey),
+			"new": fmt.Sprintf("%x", senderKey),
+		}).Error("peer changed public key")
 		return nil
 	}
 
@@ -124,12 +136,13 @@ func (srv *Server) handlePacket(msg *Message) (reply *Message) {
 	if handshakeType == HandshakeRequest {
 		hs = NewRespondingHandshake(srv.config.serverKeys, senderKey, senderHandshakeKey)
 		if hs == nil {
-			log.Errorf("%v unable to make shared handshake key", msg.Src)
+			llog.WithError(err).
+				Error("unable to make shared handshake key")
 			return nil
 		}
 		peer.handshake = hs
 	} else if hs == nil {
-		log.Errorf("%v no handshake started", msg.Src)
+		log.Error("no handshake started")
 		return nil
 	}
 
@@ -151,7 +164,8 @@ func (srv *Server) handlePacket(msg *Message) (reply *Message) {
 	switch handshakeType {
 	case HandshakeRequest:
 		if err := srv.verifyPeer(peer); err != nil {
-			log.Errorf("%v verify failed: %s", msg.Src, err)
+			llog.WithError(err).
+				Error("verify failed")
 			return nil
 		}
 
@@ -161,7 +175,7 @@ func (srv *Server) handlePacket(msg *Message) (reply *Message) {
 			peer.Ifname, err = Clone(msg.Src, senderKey)
 
 			if err != nil {
-				log.Errorf("%v cloning failed: %s", msg.Src, err)
+				llog.WithError(err).Error("cloning failed")
 				return nil
 			}
 		}
@@ -189,11 +203,11 @@ func (srv *Server) handlePacket(msg *Message) (reply *Message) {
 	case HandshakeFinish:
 		msg.SignKey = hs.sharedKey
 		if err := srv.handleFinishHandshake(msg, reply, peer); err != nil {
-			log.Errorf("%v handshake failed: %s", msg.Src, err)
+			llog.WithError(err).Error("handshake failed")
 			return nil
 		}
 	default:
-		log.Errorf("%v unsupported handshake type", msg.Src)
+		llog.Error("unsupported handshake type")
 	}
 
 	return
@@ -228,20 +242,22 @@ func (srv *Server) handleFinishHandshake(msg *Message, reply *Message, peer *Pee
 		return fmt.Errorf("%v MTU invalid: %d", msg.Src, mtu)
 	}
 	if err := ifconfig.SetMTU(peer.Ifname, mtu); err != nil {
-		log.Errorf("%v unable to set MTU to %d: %s", msg.Src, mtu, err)
+		log.WithFields(logrus.Fields{
+			logrus.ErrorKey: err,
+			"src":           msg.Src.String(),
+			"mtu":           mtu,
+		}).Error("unable to set MTU")
 	} else {
 		peer.MTU = mtu
 	}
 
 	// Clear handshake keys
 	peer.handshake = nil
-
 	peer.assignAddresses()
 
 	// Established hook
 	if f := srv.config.OnEstablished; f != nil {
 		f(peer)
 	}
-
 	return nil
 }
