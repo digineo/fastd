@@ -16,7 +16,7 @@ It consists of a kernel module and a user space daemon written in [Go](https://g
 
 ### Kernel module
 
-    svnlite checkout https://svn.FreeBSD.org/base/releng/11.0 /usr/src
+    svnlite checkout https://svn.FreeBSD.org/base/releng/12.0 /usr/src
 
     # cloning ...
     cd kmod

@@ -1180,7 +1180,7 @@ fastd_teardown(fastd_softc_t *sc) {
 		ifp->if_drv_flags &= ~IFF_DRV_RUNNING;
 		rm_wunlock(&fastd_lock);
 
-		TAILQ_FOREACH(ifa, &ifp->if_addrhead, ifa_link) {
+		CK_STAILQ_FOREACH(ifa, &ifp->if_addrhead, ifa_link) {
 			rtinit(ifa, (int)RTM_DELETE, 0);
 		}
 		if_purgeaddrs(ifp);
@@ -1436,15 +1436,22 @@ fastd_ifioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
 	switch(cmd) {
 	case SIOCGIFSTATUS:
 		ifs = (struct ifstat *)data;
-		char ip6buf[INET6_ADDRSTRLEN];
+		char buf[INET6_ADDRSTRLEN];
+
 		switch (sc->remote.sa.sa_family) {
 		case AF_INET:
 			snprintf(ifs->ascii, sizeof(ifs->ascii),
-			"\tremote port=%d inet4=%s\n", ntohs(sc->remote.in4.sin_port), inet_ntoa(sc->remote.in4.sin_addr));
+				"\tremote port=%d inet4=%s\n",
+				ntohs(sc->remote.in4.sin_port),
+				inet_ntop(AF_INET, &sc->remote.in4.sin_addr, buf, sizeof(buf))
+			);
 			break;
 		case AF_INET6:
 			snprintf(ifs->ascii, sizeof(ifs->ascii),
-			"\tremote port=%d inet6=%s\n", ntohs(sc->remote.in6.sin6_port), ip6_sprintf(ip6buf, &sc->remote.in6.sin6_addr));
+				"\tremote port=%d inet6=%s\n",
+				ntohs(sc->remote.in6.sin6_port),
+				inet_ntop(AF_INET6, &sc->remote.in6.sin6_addr, buf, sizeof(buf))
+			);
 			break;
 		default:
 			ifs->ascii[0] = '\0';
