@@ -1,10 +1,5 @@
 package fastd
 
-/*
-#include <stdlib.h>
-*/
-import "C"
-
 import (
 	"net"
 	"unsafe"
