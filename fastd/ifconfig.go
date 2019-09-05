@@ -14,8 +14,9 @@ type IfaceStats struct {
 }
 
 type ifconfigParam struct {
-	pubkey [32]byte
-	remote [18]byte
+	pubkey           [32]byte
+	remote           [18]byte
+	useCompactHeader byte
 }
 
 // SetAddrPTP sets the local and remote Point-To-Point addresses
@@ -44,17 +45,24 @@ func GetRemote(ifname string) (remote Sockaddr, pubkey []byte, err error) {
 }
 
 // Clone creates a new fastd interface
-func Clone(remote Sockaddr, pubkey []byte) (string, error) {
+func Clone(remote Sockaddr, pubkey []byte, compactHeader bool) (string, error) {
 	param := &ifconfigParam{remote: remote.RawFixed()}
+	if compactHeader {
+		param.useCompactHeader = 1
+	}
 	copy(param.pubkey[:], pubkey)
 	return ifconfig.Clone("fastd", unsafe.Pointer(param))
 }
 
 // SetRemote sets the remote address and pubkey
-func SetRemote(ifname string, remote Sockaddr, pubkey []byte) error {
+func SetRemote(ifname string, remote Sockaddr, pubkey []byte, compactHeader bool) error {
 	param := &ifconfigParam{
 		remote: remote.RawFixed(),
 	}
+	if compactHeader {
+		param.useCompactHeader = 1
+	}
+
 	copy(param.pubkey[:], pubkey)
 
 	return ifconfig.SetDrvSpec(ifname, paramSetRemote, unsafe.Pointer(param), unsafe.Sizeof(*param))

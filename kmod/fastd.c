@@ -83,6 +83,8 @@
 struct iffastdcfg {
 	char			pubkey[FASTD_PUBKEY_SIZE];
 	fastd_inaddr_t	remote;
+
+	char 			use_compact_header;
 };
 
 struct iffastdstats {
@@ -167,6 +169,7 @@ struct fastd_softc {
 	volatile u_int		refcnt;		/* reference counter */
 	char			pubkey[FASTD_PUBKEY_SIZE]; /* public key of the peer */
 	uint32_t		flags;
+	char			use_compact_header; /* use compact fastd header for data. */
 #define FASTD_FLAG_TEARDOWN	0x0001
 };
 typedef struct fastd_softc fastd_softc_t;
@@ -203,7 +206,7 @@ static void	fastd_encap_header(fastd_softc_t *, struct mbuf *, int, uint16_t, ui
 static int	fastd_encap4(fastd_softc_t *, const fastd_sockaddr_t *, struct mbuf *);
 static int	fastd_encap6(fastd_softc_t *, const fastd_sockaddr_t *, struct mbuf *);
 
-static int	fastd_add_peer(fastd_softc_t *, fastd_sockaddr_t *, char [FASTD_PUBKEY_SIZE]);
+static int	fastd_add_peer(fastd_softc_t *, fastd_sockaddr_t *, char [FASTD_PUBKEY_SIZE], char use_compact_header);
 static void	fastd_remove_peer(fastd_softc_t *);
 static struct	fastd_softc* fastd_lookup_peer(const fastd_sockaddr_t *);
 
@@ -690,19 +693,26 @@ static void
 fastd_encap_header(fastd_softc_t *sc, struct mbuf *m, int ipoff, uint16_t srcport, uint16_t dstport)
 {
 	struct fastdudphdr *hdr;
-	int len;
+	struct udphdr      *uhdr;
+	int                 len;
 
 	len = m->m_pkthdr.len - ipoff;
-	MPASS(len >= sizeof(struct fastdudphdr));
-	hdr = mtodo(m, ipoff);
+	if (!sc->use_compact_header) {
+		MPASS(len >= sizeof(struct fastdudphdr));
 
-	hdr->fastd_udp.uh_sport = srcport;
-	hdr->fastd_udp.uh_dport = dstport;
-	hdr->fastd_udp.uh_ulen = htons(len);
-	hdr->fastd_udp.uh_sum = 0;
+		hdr = mtodo(m, ipoff);
+		hdr->type = FASTD_HDR_DATA;
 
-	// Set fastd packet type to data
-	hdr->type = FASTD_HDR_DATA;
+		uhdr = &hdr->fastd_udp;
+	} else {
+		MPASS(len >= sizeof(*uhdr));
+		uhdr = mtodo(m, ipoff);
+	}
+
+	uhdr->uh_sport = srcport;
+	uhdr->uh_dport = dstport;
+	uhdr->uh_ulen = htons(len);
+	uhdr->uh_sum = 0;
 }
 
 static int
@@ -721,7 +731,11 @@ fastd_encap4(fastd_softc_t *sc, const fastd_sockaddr_t *dst, struct mbuf *m)
 	dstaddr = dst->in4.sin_addr;
 	dstport = dst->in4.sin_port;
 
-	M_PREPEND(m, sizeof(struct ip) + sizeof(struct fastdudphdr), M_NOWAIT);
+	if (sc->use_compact_header) {
+		M_PREPEND(m, sizeof(struct ip) + sizeof(struct udphdr), M_NOWAIT);
+	} else {
+		M_PREPEND(m, sizeof(struct ip) + sizeof(struct fastdudphdr), M_NOWAIT);
+	}
 	if (m == NULL) {
 		IFP_DEBUG(ifp, "ENOBUFS");
 		if_inc_counter(ifp, IFCOUNTER_OERRORS, 1);
@@ -768,7 +782,11 @@ fastd_encap6(fastd_softc_t *sc, const fastd_sockaddr_t *dst, struct mbuf *m)
 	dstaddr = &dst->in6.sin6_addr;
 	dstport = dst->in6.sin6_port;
 
-	M_PREPEND(m, sizeof(struct ip6_hdr) + sizeof(struct fastdudphdr), M_NOWAIT);
+	if (sc->use_compact_header) {
+		M_PREPEND(m, sizeof(struct ip6_hdr) + sizeof(struct udphdr), M_NOWAIT);
+	} else {
+		M_PREPEND(m, sizeof(struct ip6_hdr) + sizeof(struct fastdudphdr), M_NOWAIT);
+	}
 	if (m == NULL) {
 		IFP_DEBUG(ifp, "ENOBUFS");
 		if_inc_counter(ifp, IFCOUNTER_OERRORS, 1);
@@ -836,6 +854,13 @@ fastd_rcv_udp_packet(struct mbuf *m, int offset, struct inpcb *inpcb,
 	m_copydata(m, offset, 1, (caddr_t) &msg_type);
 	rm_rlock(&fastd_lock, &tracker);
 
+	/* Take the higher nibble as the command value if the value is bigger
+	   than 0x0f.  This is part of the proprietary compact header fastd extension.
+	*/
+	if (msg_type > 0x0f) {
+		msg_type = msg_type & 0xf0;
+	}
+
 	switch (msg_type){
 	case FASTD_HDR_HANDSHAKE:
 		// Header too short?
@@ -867,7 +892,8 @@ fastd_rcv_udp_packet(struct mbuf *m, int offset, struct inpcb *inpcb,
 
 		break;
 	case FASTD_HDR_DATA:
-
+	case FASTD_HDR_IP4PACKET:
+	case FASTD_HDR_IP6PACKET:
 		sc = fastd_lookup_peer((const fastd_sockaddr_t *)sa_src);
 		if (sc == NULL) {
 			DEBUGF("unable to find peer");
@@ -880,7 +906,7 @@ fastd_rcv_udp_packet(struct mbuf *m, int offset, struct inpcb *inpcb,
 
 		FASTD_ACQUIRE(sc);
 		rm_runlock(&fastd_lock, &tracker);
-		fastd_recv_data(m, offset, datalen, sc);
+		fastd_recv_data(m, offset+(msg_type == FASTD_HDR_DATA ? 1 : 0), datalen, sc);
 		fastd_release(sc);
 
 		// unlock/free already done
@@ -904,7 +930,7 @@ fastd_recv_data(struct mbuf *m, u_int offset, u_int datalen, fastd_softc_t *sc)
 		if_inc_counter(sc->ifp, IFCOUNTER_IPACKETS, 1);
 
 		// Remove headers, which results in an empty packet
-		m_adj(m, offset+1);
+		m_adj(m, offset);
 		int error = fastd_encap(sc, &sc->remote, m);
 
 		if (error) {
@@ -919,7 +945,7 @@ fastd_recv_data(struct mbuf *m, u_int offset, u_int datalen, fastd_softc_t *sc)
 
 	// Get the IP version number
 	u_int8_t tp;
-	m_copydata(m, offset+1, 1, &tp);
+	m_copydata(m, offset, 1, &tp);
 	tp = (tp >> 4) & 0xff;
 
 	switch (tp) {
@@ -938,8 +964,8 @@ fastd_recv_data(struct mbuf *m, u_int offset, u_int datalen, fastd_softc_t *sc)
 		return;
 	}
 
-	// Trim ip+udp+fastd headers
-	m_adj(m, offset+1);
+	// Trim outer headers. (ip{4,6}+udp(+fastd))
+	m_adj(m, offset);
 
 	// Assign receiving interface
 	m->m_pkthdr.rcvif = sc->ifp;
@@ -1131,7 +1157,7 @@ fastd_clone_create(struct if_clone *ifc, int unit, caddr_t params)
 			goto fail;
 		}
 
-		error = fastd_add_peer(sc, &sa, cfg.pubkey);
+		error = fastd_add_peer(sc, &sa, cfg.pubkey, cfg.use_compact_header);
 		if (error)
 			goto fail;
 	}
@@ -1267,7 +1293,7 @@ fastd_lookup_peer(const fastd_sockaddr_t *addr)
 }
 
 static int
-fastd_add_peer(fastd_softc_t *sc, fastd_sockaddr_t *sa, char pubkey[FASTD_PUBKEY_SIZE])
+fastd_add_peer(fastd_softc_t *sc, fastd_sockaddr_t *sa, char pubkey[FASTD_PUBKEY_SIZE], char use_compact_header)
 {
 	fastd_socket_t *socket;
 	rm_assert(&fastd_lock, RA_WLOCKED);
@@ -1290,6 +1316,8 @@ fastd_add_peer(fastd_softc_t *sc, fastd_sockaddr_t *sa, char pubkey[FASTD_PUBKEY
 		IFP_DEBUG(sc->ifp, "setting pubkey");
 		memcpy(&sc->pubkey, pubkey, sizeof(sc->pubkey));
 	}
+
+	sc->use_compact_header = use_compact_header;
 
 	// Add to flows
 	LIST_INSERT_HEAD(&fastd_peers[FASTD_HASH(sc)], sc, fastd_flow_entry);
@@ -1396,7 +1424,7 @@ fastd_ctrl_set_remote(fastd_softc_t *sc, void *arg)
 
 	// Reconfigure
 	fastd_remove_peer(sc);
-	error = fastd_add_peer(sc, &sa, cfg->pubkey);
+	error = fastd_add_peer(sc, &sa, cfg->pubkey, cfg->use_compact_header);
 out:
 	rm_wunlock(&fastd_lock);
 	return (error);

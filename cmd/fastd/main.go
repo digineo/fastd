@@ -78,7 +78,7 @@ func main() {
 		srv.Stop()
 	case "remote":
 		port, _ := strconv.Atoi(args[2])
-		fastd.SetRemote(args[0], fastd.Sockaddr{IP: net.ParseIP(args[1]), Port: uint16(port)}, nil)
+		fastd.SetRemote(args[0], fastd.Sockaddr{IP: net.ParseIP(args[1]), Port: uint16(port)}, nil, false)
 	case "addr":
 		err := fastd.SetAddrPTP(args[0], net.ParseIP(args[1]), net.ParseIP(args[2]))
 		if err != nil {

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"reflect"
+	"strconv"
 	"time"
 
 	"github.com/digineo/fastd/ifconfig"
@@ -152,7 +153,7 @@ func (srv *Server) handlePacket(msg *Message) (reply *Message) {
 	reply.Records.
 		SetReplyCode(ReplySuccess).
 		SetMethodList("null").
-		SetVersionName("v18").
+		SetVersionName("v20").
 		SetSenderKey(srv.config.serverKeys.public[:]).
 		SetSenderHandshakeKey(hs.ourHandshakeKey.public[:]).
 		SetRecipientKey(senderKey).
@@ -169,10 +170,17 @@ func (srv *Server) handlePacket(msg *Message) (reply *Message) {
 			return nil
 		}
 
+		var useCompactHeader bool
+		if records[RecordVersionName] != nil && len(records[RecordVersionName]) > 1 {
+			val, err := strconv.Atoi(string(records[RecordVersionName])[1:])
+
+			useCompactHeader = err == nil && val >= 20
+		}
+
 		// Assign interface and addresses
 		var err error
 		if peer.Ifname == "" {
-			peer.Ifname, err = Clone(msg.Src, senderKey)
+			peer.Ifname, err = Clone(msg.Src, senderKey, useCompactHeader)
 
 			if err != nil {
 				llog.WithError(err).Error("cloning failed")

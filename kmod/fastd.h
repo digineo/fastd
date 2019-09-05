@@ -19,6 +19,8 @@ typedef union {
 
 #define FASTD_HDR_HANDSHAKE	0x01
 #define FASTD_HDR_DATA		0x02
+#define FASTD_HDR_IP4PACKET	0x40
+#define FASTD_HDR_IP6PACKET	0x60
 
 typedef struct {
   char      addr[16]; // IPv4/IPv6 address
