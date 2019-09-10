@@ -56,6 +56,9 @@ func main() {
 				}
 				peer.IPv4.LocalAddr = net.IPv4(192, 168, 23, byte(index)*2)
 				peer.IPv4.DestAddr = net.IPv4(192, 168, 23, byte(index)*2+1)
+
+				peer.IPv6.LocalAddr = net.ParseIP("fe80::1")
+				peer.IPv6.DestAddr = net.ParseIP("fe80::2")
 			},
 		}
 
