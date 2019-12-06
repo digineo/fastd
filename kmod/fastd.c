@@ -106,7 +106,7 @@ static int		fastd_kqevent(struct knote *, long);
 static void		fastd_kqdetach(struct knote *);
 
 static struct filterops fastd_filterops = {
-	.f_isfd =	0,
+	.f_isfd =	1,
 	.f_attach =	NULL,
 	.f_detach =	fastd_kqdetach,
 	.f_event =	fastd_kqevent,
