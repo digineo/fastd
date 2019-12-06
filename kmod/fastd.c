@@ -415,22 +415,50 @@ fastd_read(struct cdev *dev, struct uio *uio, int ioflag)
 }
 
 static int
-fastd_modevent(module_t mod __unused, int event, void *arg __unused)
+fastd_makedev(void)
 {
-	int error = 0;
+	struct make_dev_args args;
 
-	switch (event) {
-	case MOD_LOAD:
-		rm_init(&fastd_lock, "fastd_lock");
-		mtx_init(&fastd_msgmtx, "fastd", NULL, MTX_SPIN);
-		knlist_init_mtx(&fastd_rsel.si_note, NULL);
-		fastd_msgbuf = buf_ring_alloc(FASTD_MSG_BUFFER_SIZE, M_FASTD, M_WAITOK, &fastd_msgmtx);
-		fastd_dev = make_dev(&fastd_cdevsw, 0, UID_ROOT, GID_WHEEL, 0600, "fastd");
-		fastd_iface_load();
+	make_dev_args_init(&args);
+	args.mda_flags = MAKEDEV_WAITOK;
+	args.mda_devsw = &fastd_cdevsw;
+	args.mda_uid = UID_ROOT;
+	args.mda_gid = GID_WHEEL;
+	args.mda_mode = 0600;
 
-		uprintf("fastd driver loaded.\n");
-		break;
-	case MOD_UNLOAD:
+	return make_dev_s(&args, &fastd_dev, "fastd");
+}
+
+static int
+fastd_modevent_load(void)
+{
+	int err = 0;
+
+	rm_init(&fastd_lock, "fastd_lock");
+	mtx_init(&fastd_msgmtx, "fastd", NULL, MTX_SPIN);
+	knlist_init_mtx(&fastd_rsel.si_note, NULL);
+
+	fastd_msgbuf = buf_ring_alloc(FASTD_MSG_BUFFER_SIZE, M_FASTD, M_WAITOK, &fastd_msgmtx);
+
+	if ((err = fastd_makedev()) != 0) {
+		goto bail;
+	}
+
+	fastd_iface_load();
+	uprintf("fastd driver loaded.\n");
+	return (0);
+
+bail:
+	knlist_destroy(&fastd_rsel.si_note);
+	mtx_destroy(&fastd_msgmtx);
+	rm_destroy(&fastd_lock);
+
+	return (err);
+}
+
+static int
+fastd_modevent_unload()
+{
 		fastd_iface_unload();
 		fastd_close_sockets();
 		knlist_destroy(&fastd_rsel.si_note);
@@ -450,6 +478,20 @@ fastd_modevent(module_t mod __unused, int event, void *arg __unused)
 		rm_destroy(&fastd_lock);
 
 		uprintf("fastd driver unloaded.\n");
+		return (0);
+}
+
+static int
+fastd_modevent(module_t mod __unused, int event, void *arg __unused)
+{
+	int error = 0;
+
+	switch (event) {
+	case MOD_LOAD:
+		error = fastd_modevent_load();
+		break;
+	case MOD_UNLOAD:
+		error = fastd_modevent_unload();
 		break;
 	default:
 		error = EOPNOTSUPP;
