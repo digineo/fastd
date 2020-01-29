@@ -1318,6 +1318,11 @@ fastd_add_peer(fastd_softc_t *sc, fastd_sockaddr_t *sa, char pubkey[FASTD_PUBKEY
 	}
 
 	sc->use_compact_header = use_compact_header;
+	if (use_compact_header) {
+		IFP_DEBUG(sc->ifp, "compact header enabled");
+	} else {
+		IFP_DEBUG(sc->ifp, "compact header disabled");
+	}
 
 	// Add to flows
 	LIST_INSERT_HEAD(&fastd_peers[FASTD_HASH(sc)], sc, fastd_flow_entry);
