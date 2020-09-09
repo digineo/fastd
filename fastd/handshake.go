@@ -209,6 +209,9 @@ func (srv *Server) handlePacket(msg *Message) (reply *Message) {
 			reply.Records.SetIPv6DstAddr(peer.IPv6.LocalAddr)
 		}
 	case HandshakeFinish:
+		// don't reply to the finish message
+		reply = nil
+
 		msg.SignKey = hs.sharedKey
 		if err := srv.handleFinishHandshake(msg, reply, peer); err != nil {
 			llog.WithError(err).Error("handshake failed")
