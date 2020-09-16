@@ -3,7 +3,6 @@ package fastd
 import (
 	"fmt"
 	"net"
-	"strconv"
 	"sync"
 )
 
@@ -32,8 +31,7 @@ func NewUDPServer(addresses []Sockaddr) (ServerImpl, error) {
 			Port: int(sa.Port),
 		}
 
-		bind := net.JoinHostPort(addr.IP.String(), strconv.Itoa(int(addr.Port)))
-		log.WithField("bind", bind).Info("start UDP server")
+		log.WithField("bind", addr.String()).Info("start UDP server")
 
 		conn, err := net.ListenUDP("udp", &addr)
 		if err != nil {
