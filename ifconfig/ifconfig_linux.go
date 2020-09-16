@@ -5,6 +5,8 @@ import (
 	"errors"
 	"net"
 	"unsafe"
+
+	"github.com/vishvananda/netlink"
 )
 
 var notImplemented = errors.New("not implemented")
@@ -30,7 +32,12 @@ func GetMTU(ifname string) (int, error) {
 }
 
 func SetMTU(ifname string, mtu uint16) error {
-	return notImplemented
+	link, err := netlink.LinkByName(ifname)
+	if err != nil {
+		return err
+	}
+
+	return netlink.LinkSetMTU(link, int(mtu))
 }
 
 func GetDescr(ifname string) (string, error) {
@@ -46,7 +53,15 @@ func SetAddrPTP(ifname string, addr, dstaddr net.IP) (err error) {
 }
 
 func SetAddr(ifname string, addr net.IP, prefixlen uint8) (err error) {
-	return notImplemented
+	link, err := netlink.LinkByName(ifname)
+	if err != nil {
+		return err
+	}
+
+	return netlink.AddrReplace(link, &netlink.Addr{IPNet: &net.IPNet{
+		IP:   addr,
+		Mask: net.CIDRMask(int(prefixlen), 8*len(addr)),
+	}})
 }
 
 func RemoveAddr4(ifname string) (err error) {
