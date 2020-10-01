@@ -137,8 +137,7 @@ func (srv *Server) handlePacket(msg *Message) (reply *Message) {
 	if handshakeType == HandshakeRequest {
 		hs = NewRespondingHandshake(srv.config.serverKeys, senderKey, senderHandshakeKey)
 		if hs == nil {
-			llog.WithError(err).
-				Error("unable to make shared handshake key")
+			llog.WithError(err).Error("unable to make shared handshake key")
 			return nil
 		}
 		peer.handshake = hs
@@ -165,8 +164,7 @@ func (srv *Server) handlePacket(msg *Message) (reply *Message) {
 	switch handshakeType {
 	case HandshakeRequest:
 		if err := srv.verifyPeer(peer); err != nil {
-			llog.WithError(err).
-				Error("verify failed")
+			llog.WithError(err).Error("verify failed")
 			if created {
 				srv.RemovePeer(peer)
 			}

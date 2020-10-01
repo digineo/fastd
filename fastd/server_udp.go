@@ -69,7 +69,6 @@ func (srv *UDPServer) readPackets(udpconn *UDPConn) {
 
 	for {
 		n, src, err := udpconn.conn.ReadFromUDP(buf)
-
 		if err != nil {
 			fmt.Println("Error reading from UDP:", err)
 			break

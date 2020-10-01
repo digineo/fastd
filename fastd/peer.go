@@ -84,8 +84,6 @@ func (srv *Server) addPeer(in *Peer) {
 	peer.Ifname = in.Ifname
 	peer.PublicKey = in.PublicKey
 	srv.peers[key] = peer
-
-	return
 }
 
 // Calls the OnVerify hook (if exists) and sets the handshake timeout
