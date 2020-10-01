@@ -62,14 +62,15 @@ func (srv *Server) GetPeers() []*Peer {
 }
 
 // GetPeer returns the peer and creates it if it does not exist yet
-func (srv *Server) GetPeer(addr Sockaddr) (peer *Peer) {
+func (srv *Server) getPeer(addr Sockaddr) (peer *Peer, created bool) {
 	key := string(addr.Raw())
 
 	srv.peersMtx.Lock()
 	defer srv.peersMtx.Unlock()
 
-	if peer, _ = srv.peers[key]; peer == nil {
+	if peer = srv.peers[key]; peer == nil {
 		peer = NewPeer(addr)
+		created = true
 		srv.peers[key] = peer
 	}
 	return

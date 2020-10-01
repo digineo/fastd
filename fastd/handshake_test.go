@@ -15,7 +15,7 @@ func TestHandshake(t *testing.T) {
 	srv.config.serverKeys = testServerSecret
 	srv.peers = make(map[string]*Peer)
 
-	peer := srv.GetPeer(peerAddr)
+	peer, _ := srv.getPeer(peerAddr)
 	assert.Nil(peer.handshake)
 
 	// Handshake request (0x01)

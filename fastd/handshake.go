@@ -120,7 +120,7 @@ func (srv *Server) handlePacket(msg *Message) (reply *Message) {
 		return
 	}
 
-	peer := srv.GetPeer(msg.Src)
+	peer, created := srv.getPeer(msg.Src)
 	if peer.PublicKey == nil {
 		peer.PublicKey = senderKey
 	} else if !bytes.Equal(peer.PublicKey, senderKey) {
@@ -167,6 +167,9 @@ func (srv *Server) handlePacket(msg *Message) (reply *Message) {
 		if err := srv.verifyPeer(peer); err != nil {
 			llog.WithError(err).
 				Error("verify failed")
+			if created {
+				srv.RemovePeer(peer)
+			}
 			return nil
 		}
 
@@ -184,6 +187,9 @@ func (srv *Server) handlePacket(msg *Message) (reply *Message) {
 
 			if err != nil {
 				llog.WithError(err).Error("cloning failed")
+				if created {
+					srv.RemovePeer(peer)
+				}
 				return nil
 			}
 		}
