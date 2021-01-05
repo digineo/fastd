@@ -32,10 +32,9 @@ const (
 
 // GetRemote returns the remote address and pubkey
 func GetRemote(ifname string) (remote Sockaddr, pubkey []byte, err error) {
-	param := &ifconfigParam{}
+	param := ifconfigParam{}
 
-	ifconfig.GetDrvSpec(ifname, paramGetRemote, unsafe.Pointer(param), unsafe.Sizeof(*param))
-
+	err = ifconfig.GetDrvSpec(ifname, paramGetRemote, unsafe.Pointer(&param), unsafe.Sizeof(param))
 	if err == nil {
 		pubkey = param.pubkey[:]
 		remote = parseSockaddr(param.remote[:])
