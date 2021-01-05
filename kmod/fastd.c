@@ -85,6 +85,7 @@ struct iffastdcfg {
 	fastd_inaddr_t	remote;
 
 	char 			use_compact_header;
+	char			unused;
 };
 
 struct iffastdstats {

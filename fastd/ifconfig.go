@@ -17,6 +17,7 @@ type ifconfigParam struct {
 	pubkey           [32]byte
 	remote           [18]byte
 	useCompactHeader byte
+	_                byte
 }
 
 // SetAddrPTP sets the local and remote Point-To-Point addresses
