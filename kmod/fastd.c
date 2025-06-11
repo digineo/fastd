@@ -33,6 +33,7 @@
 #include <net/bpf.h>
 
 #include <netinet/in.h>
+#include <netinet/in_var.h>
 #include <netinet6/in6_var.h>
 #include <netinet/ip.h>
 #include <netinet/ip_var.h>
@@ -44,11 +45,13 @@
 #include "fastd.h"
 
 #ifdef DEBUG
-#define DEBUGF(fmt, ...) printf("%s(): " fmt "\n", __func__, ##__VA_ARGS__);
-#define IFP_DEBUG(ifp, fmt, ...) if_printf(ifp, "%s(): " fmt "\n", __func__, ##__VA_ARGS__);
+#	define DEBUGF(fmt, ...) printf("%s(): " fmt "\n", __func__, ##__VA_ARGS__);
+#	define IFP_DEBUG(ifp, fmt, ...) if_printf(ifp, "%s(): " fmt "\n", __func__, ##__VA_ARGS__);
+#	define debug 1
 #else
-#define DEBUGF(...)
-#define IFP_DEBUG(...)
+#	define DEBUGF(...)
+#	define IFP_DEBUG(...)
+#	define debug 0
 #endif
 
 /* Maximum output packet size (default) */
@@ -225,8 +228,6 @@ struct fastd_control {
 #define FASTD_CTRL_FLAG_COPYIN  0x01
 #define FASTD_CTRL_FLAG_COPYOUT 0x02
 };
-
-
 
 
 // ------------------------------------------------------------------
@@ -461,7 +462,7 @@ bail:
 }
 
 static int
-fastd_modevent_unload()
+fastd_modevent_unload(void)
 {
 		fastd_iface_unload();
 		fastd_close_sockets();
@@ -636,7 +637,7 @@ fastd_close_socket(fastd_sockaddr_t *sa){
 
 // Closes all sockets
 static void
-fastd_close_sockets(){
+fastd_close_sockets(void){
 	fastd_socket_t *sock;
 
 	rm_wlock(&fastd_lock);
@@ -1082,7 +1083,7 @@ fastd_ifstart(struct ifnet *ifp __unused)
 
 
 static void
-fastd_iface_load()
+fastd_iface_load(void)
 {
 	int i;
 
@@ -1095,7 +1096,7 @@ fastd_iface_load()
 }
 
 static void
-fastd_iface_unload()
+fastd_iface_unload(void)
 {
 	int i;
 	fastd_softc_t *sc;
@@ -1233,6 +1234,7 @@ fastd_destroy(fastd_softc_t *sc)
 static void
 fastd_teardown(fastd_softc_t *sc) {
 	struct ifnet *ifp = sc->ifp;
+	struct in_ifaddr *ia;
 
 	rm_assert(&fastd_lock, RA_WLOCKED);
 	sc->flags |= FASTD_FLAG_TEARDOWN;
@@ -1245,12 +1247,19 @@ fastd_teardown(fastd_softc_t *sc) {
 
 	if (ifp->if_drv_flags & IFF_DRV_RUNNING) {
 		struct ifaddr *ifa;
+		int fibnum = ifp->if_fib;
+		int error;
 
 		ifp->if_drv_flags &= ~IFF_DRV_RUNNING;
 		rm_wunlock(&fastd_lock);
 
 		CK_STAILQ_FOREACH(ifa, &ifp->if_addrhead, ifa_link) {
-			rtinit(ifa, (int)RTM_DELETE, 0);
+			rt_addrmsg(RTM_DELETE, ifa, fibnum);
+			ia = ifatoia(ifa);
+			error = in_handle_ifaddr_route(RTM_DELETE, ia);
+			if (debug && error) {
+				IFP_DEBUG(ifp, "deleting route failed, error=%d\n", error);
+			}
 		}
 		if_purgeaddrs(ifp);
 		rm_wlock(&fastd_lock);
