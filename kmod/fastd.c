@@ -84,11 +84,10 @@
 #define FASTD_RELEASE(_sc)	refcount_release(&(_sc)->refcnt)
 
 struct iffastdcfg {
-	char			pubkey[FASTD_PUBKEY_SIZE];
+	char		pubkey[FASTD_PUBKEY_SIZE];
 	fastd_inaddr_t	remote;
-
-	char 			use_compact_header;
-	char			unused;
+	char 		use_compact_header;
+	char		unused;
 };
 
 struct iffastdstats {
@@ -1258,7 +1257,7 @@ fastd_teardown(fastd_softc_t *sc) {
 			ia = ifatoia(ifa);
 			error = in_handle_ifaddr_route(RTM_DELETE, ia);
 			if (debug && error) {
-				IFP_DEBUG(ifp, "deleting route failed, error=%d\n", error);
+				IFP_DEBUG(ifp, "deleting route failed, fib=%d, error=%d", fibnum, error);
 			}
 		}
 		if_purgeaddrs(ifp);
@@ -1372,21 +1371,9 @@ fastd_ifinit(struct ifnet *ifp)
 
 // Functions that are called on SIOCGDRVSPEC and SIOCSDRVSPEC
 static const struct fastd_control fastd_control_table[] = {
-
-	[FASTD_CMD_GET_REMOTE] =
-			{   fastd_ctrl_get_remote, sizeof(struct iffastdcfg),
-		FASTD_CTRL_FLAG_COPYOUT
-			},
-
-	[FASTD_CMD_SET_REMOTE] =
-			{   fastd_ctrl_set_remote, sizeof(struct iffastdcfg),
-		FASTD_CTRL_FLAG_COPYIN
-			},
-
-	[FASTD_CMD_GET_STATS] =
-			{   fastd_ctrl_get_stats, sizeof(struct iffastdstats),
-		FASTD_CTRL_FLAG_COPYOUT
-			},
+	[FASTD_CMD_GET_REMOTE] = { fastd_ctrl_get_remote, sizeof(struct iffastdcfg), FASTD_CTRL_FLAG_COPYOUT },
+	[FASTD_CMD_SET_REMOTE] = { fastd_ctrl_set_remote, sizeof(struct iffastdcfg), FASTD_CTRL_FLAG_COPYIN },
+	[FASTD_CMD_GET_STATS]  = { fastd_ctrl_get_stats, sizeof(struct iffastdstats), FASTD_CTRL_FLAG_COPYOUT },
 };
 
 static const int fastd_control_table_size = nitems(fastd_control_table);
@@ -1481,7 +1468,8 @@ fastd_ioctl_drvspec(fastd_softc_t *sc, struct ifdrv *ifd, int get)
 	}
 
 	if (ifd->ifd_len != vc->fastdc_argsize || ifd->ifd_len > sizeof(args)){
-		IFP_DEBUG(sc->ifp, "invalid argsize given=%lu expected=%d, args=%lu", ifd->ifd_len, vc->fastdc_argsize, sizeof(args));
+		IFP_DEBUG(sc->ifp, "invalid argsize given=%lu expected=%d, args=%lu",
+			ifd->ifd_len, vc->fastdc_argsize, sizeof(args));
 		return (EINVAL);
 	}
 
@@ -1555,7 +1543,9 @@ fastd_ifioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
 		break;
 	case SIOCGDRVSPEC:
 	case SIOCSDRVSPEC:
-		DEBUGF("SIOCGDRVSPEC/SIOCSDRVSPEC ifname=%s cmd=%lx len=%lu\n", ifd->ifd_name, ifd->ifd_cmd, ifd->ifd_len);
+		IFP_DEBUG(ifp, "cmd=%s iface=%s cmd=%lx len=%lu",
+			(cmd == SIOCGDRVSPEC) ? "GetDrvSpec" : "SetDrvSpec",
+			ifd->ifd_name, ifd->ifd_cmd, ifd->ifd_len);
 		error = fastd_ioctl_drvspec(sc, ifd, cmd == SIOCGDRVSPEC);
 		break;
 	case SIOCSIFFLAGS:

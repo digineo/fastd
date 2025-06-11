@@ -16,9 +16,9 @@ It consists of a kernel module and a user space daemon written in [Go](https://g
 
 ### Kernel module
 
-    svnlite checkout https://svn.FreeBSD.org/base/releng/12.0 /usr/src
+    git clone --branch releng/13.5 https://git.FreeBSD.org/src.git /usr/src
+    # cloning may take a while
 
-    # cloning ...
     cd kmod
     make
     sudo kldload ./fastd.ko
