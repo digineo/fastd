@@ -149,3 +149,12 @@ func SetAddrPTP(ifname string, addr, dstaddr net.IP) (err error) {
 
 	return retval(res)
 }
+
+// Converts the given value to a syscall.Errno if it is not zero
+func retval(val C.int) error {
+	if val == 0 {
+		return nil
+	} else {
+		return syscall.Errno(val)
+	}
+}
